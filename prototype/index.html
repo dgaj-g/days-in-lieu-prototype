@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Days in Lieu · Our Lady’s Grammar School</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="assets/crest-160.png">
+</head>
+<body>
+<!-- PROTOTYPE-ONLY dev bar: the build strips this block and mock-api.js -->
+<div class="proto" id="proto"><div class="wrap">
+  <span id="proto-bar"></span>
+  <select id="proto-viewer">
+    <option value="dgartland021@c2ken.net">Damien Gartland · teaching staff</option>
+    <option value="chughes400@c2ken.net">Claire Hughes · teaching staff</option>
+    <option value="principal001@c2ken.net">The Principal (approver)</option>
+    <option value="snew999@c2ken.net">New visitor · C2k gives “S New”</option>
+    <option value="blank777@c2ken.net">New visitor · no C2k name</option>
+    <option value="left000@c2ken.net">Removed account</option>
+    <option value="">Not signed in</option>
+  </select>
+  <span id="proto-today"></span>
+  <label><input type="checkbox" id="proto-slow" checked> <span id="proto-slow-l"></span></label>
+</div></div>
+<div id="app"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="../logic/logic.js"></script>
+<script src="strings.js"></script>
+<script src="mock-api.js"></script>
+<script src="app.js"></script>
+<script>
+  window.DIL_PROTO = true;
+  document.getElementById('proto-bar').textContent = S.proto.bar;
+  document.getElementById('proto-today').textContent = S.proto.today + ': ' + DIL.formatLong(DIL_API._today);
+  document.getElementById('proto-slow-l').textContent = S.proto.latency;
+  document.getElementById('proto-viewer').addEventListener('change', function (e) { DIL_API._setViewer(e.target.value); DILApp.boot(); });
+  document.getElementById('proto-slow').addEventListener('change', function (e) { DIL_API._setSlow(e.target.checked); });
+  DILApp.boot();
+</script>
+</body>
+</html>
