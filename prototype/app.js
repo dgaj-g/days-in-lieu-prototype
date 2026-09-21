@@ -370,7 +370,7 @@ var DILApp = (function () {
       if (typeof r.queueCount === 'number') setBadge(r.queueCount);
       if (change) { card.outerHTML = decidedCard(r.request); toast(S.queue.done(first)); return; }
       card.innerHTML = '<div class="done-line">✓ ' + esc(S.queue.done(first)) + '</div>';
-      setTimeout(function () { card.classList.add('leaving'); setTimeout(function () { card.remove(); var left = $$('.qcard').length; $('.page-head .sub').textContent = S.queue.sub(left); if (!left) $('#main').insertAdjacentHTML('beforeend', '<div class="card"><p class="empty">' + esc(S.queue.empty) + '</p></div>'); }, 450); }, 1400);
+      setTimeout(function () { card.classList.add('leaving'); setTimeout(function () { if (!document.body.contains(card)) return; card.remove(); var left = $$('.qcard').length; var sub = $('.page-head .sub'); if (sub) sub.textContent = S.queue.sub(left); if (!left && $('#main')) $('#main').insertAdjacentHTML('beforeend', '<div class="card"><p class="empty">' + esc(S.queue.empty) + '</p></div>'); }, 450); }, 1400);
     }).catch(function () { unbusy(btn); msg.textContent = S.queue.failed; serverFailed(); });
   }
 
