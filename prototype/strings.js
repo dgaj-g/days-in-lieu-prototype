@@ -72,7 +72,7 @@ var S = (function () {
         claim: {
           eyebrow: '1 · Claim',
           title: 'Claim days I’m owed',
-          body: function (who) { return 'Tell ' + who + ' about extra work you did — a residential trip, a weekend fixture, SEAG Help — and how many days in lieu it earned. Nothing can be booked until ' + who + ' approves the claim.'; },
+          body: function (who) { return 'Explain the extra work you did, e.g. SEAG Help or a weekend school trip, and how many days in lieu it earned. You cannot make bookings until ' + who + ' approves the claim.'; },
           button: 'Claim days'
         },
         book: {
