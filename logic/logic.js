@@ -10,7 +10,8 @@ var DIL = (function () {
   var MON_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var MON_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   var MON_ALIASES = { sept: 8 };
-  var PORTIONS = ['full', 'am', 'pm'];
+  var PORTIONS = ['full', 'am', 'pm'];         // a booked day off
+  var CLAIM_PORTIONS = ['full', 'half'];        // a day of extra work claimed
   var DAY_STATUSES = ['pending', 'approved', 'declined', 'withdrawn', 'cancelled'];
   var CLAIM_STATUSES = ['pending', 'approved', 'partly', 'declined', 'withdrawn'];
   var CLAIM_MAX = 15;   // days one claim may ask for
@@ -43,11 +44,13 @@ var DIL = (function () {
   // A list of days, runs of consecutive days folded into ranges, the year said once when it is the same throughout.
   // ['2026-09-04','2026-09-05','2026-09-06'] → 'Fri 4 – Sun 6 Sep 2026'
   // ['2026-09-19','2026-09-26','2026-10-03'] → 'Sat 19 Sep, Sat 26 Sep and Sat 3 Oct 2026'
-  function formatDateList(isos) {
-    var list = (isos || []).filter(isValidISO).slice().sort(), runs = [];
+  function formatDateList(days) {
+    var list = (days || []).map(function (d) { return typeof d === 'string' ? { date: d, portion: 'full' } : { date: d && d.date, portion: (d && d.portion) || 'full' }; })
+      .filter(function (d) { return isValidISO(d.date); }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    var runs = [];
     for (var i = 0; i < list.length; i++) {
-      var last = runs[runs.length - 1];
-      if (last && addDays(last.to, 1) === list[i]) last.to = list[i]; else runs.push({ from: list[i], to: list[i] });
+      var d = list[i], last = runs[runs.length - 1], half = d.portion !== 'full';
+      if (!half && last && !last.half && addDays(last.to, 1) === d.date) last.to = d.date; else runs.push({ from: d.date, to: d.date, half: half });
     }
     if (!runs.length) return '';
     var oneYear = parts(runs[0].from).y === parts(runs[runs.length - 1].to).y;
@@ -57,7 +60,8 @@ var DIL = (function () {
       if (r.from === r.to) s = dm(r.from);
       else if (a.m === b.m && a.y === b.y) s = DAY_SHORT[weekdayIndex(r.from)] + ' ' + a.d + ' – ' + dm(r.to);
       else s = dm(r.from) + (oneYear ? '' : ' ' + a.y) + ' – ' + dm(r.to);
-      return oneYear ? s : s + ' ' + b.y;
+      if (!oneYear) s += ' ' + b.y;
+      return r.half ? s + ' (half day)' : s;
     });
     var joined = out.length === 1 ? out[0] : out.slice(0, -1).join(', ') + ' and ' + out[out.length - 1];
     return oneYear ? joined + ' ' + parts(runs[0].from).y : joined;
@@ -70,7 +74,7 @@ var DIL = (function () {
     var unit = (n === 0.5 || n === 1) ? 'day' : 'days';
     return num + ' ' + unit;
   }
-  function portionValue(portion) { return portion === 'full' ? 1 : (portion === 'am' || portion === 'pm') ? 0.5 : 0; }
+  function portionValue(portion) { return portion === 'full' ? 1 : (portion === 'am' || portion === 'pm' || portion === 'half') ? 0.5 : 0; }
   function total(days) { var t = 0; for (var i = 0; i < days.length; i++) t += portionValue(days[i].portion); return Math.round(t * 2) / 2; }
 
   // ---------- academic year ----------
@@ -300,9 +304,19 @@ var DIL = (function () {
   function firstName(name) { var n = String(name || '').trim().replace(/^(mr|mrs|ms|miss|dr|fr|sr)\.?\s+/i, ''); return n.split(/\s+/)[0] || n; }
 
   // ---------- claims (days in lieu a person says they are owed) ----------
-  // A claim: {claimId, staffEmail, staffName, submittedAt, workDates, reason, amountClaimed, amountApproved, status, decisionNote, decidedAt, decidedBy, startYear}
-  // workDates: the days the work was on, sorted ISO strings, one or more, not necessarily consecutive (Saturday classes, say).
-  // Stored in the sheet as one cell, the dates joined with a comma.
+  // A claim: {claimId, staffEmail, staffName, submittedAt, workDays, reason, amountClaimed, amountApproved, status, decisionNote, decidedAt, decidedBy, startYear}
+  // workDays: the days the work was on, [{date, portion}] sorted by date, portion 'full' or 'half', one or more, not
+  // necessarily consecutive (Saturday classes, say). amountClaimed is always their sum — the person never types a number.
+  // Stored in the sheet as one cell: dates joined with commas, a half day written as 2026-09-19:half.
+  function parseWorkDays(raw) {
+    if (typeof raw === 'string') raw = raw.split(',');
+    return (raw || []).map(function (d) {
+      if (d && typeof d === 'object') return { date: String(d.date || '').trim(), portion: d.portion === 'half' ? 'half' : d.portion === 'full' ? 'full' : String(d.portion || '') };
+      var m = /^\s*([^:\s]+)\s*(?::\s*(\w+))?\s*$/.exec(String(d || '')); return m ? { date: m[1], portion: m[2] ? m[2].toLowerCase() : 'full' } : { date: String(d || '').trim(), portion: 'full' };
+    }).filter(function (d) { return d.date; });
+  }
+  function workDaysCell(days) { return (days || []).map(function (d) { return d.date + (d.portion === 'half' ? ':half' : ''); }).join(','); }
+  function claimTotal(days) { return total(days || []); }
   function isHalfStep(n) { n = Number(n); return isFinite(n) && n > 0 && Math.round(n * 2) === n * 2; }
   function nextClaimId(existingIds, year) {
     var prefix = 'CLM-' + String(year.startYear).slice(2) + pad2((year.startYear + 1) % 100) + '-', max = 0;
@@ -324,28 +338,27 @@ var DIL = (function () {
     if (isValidISO(b) && inYear(b, year)) return b;
     return iso;
   }
-  // Validate a claim as it arrives at the server. sub: {reason, workDates:[iso], amount}; ctx: {todayISO, year}.
-  // Codes: no_reason · reason_too_long · bad_amount · amount_too_big · no_dates · bad_date · date_outside_year
+  // Validate a claim as it arrives at the server. sub: {reason, workDays:[{date, portion}] | 'iso,iso:half'}; ctx: {todayISO, year}.
+  // Codes: no_reason · reason_too_long · no_dates · bad_date · bad_portion · date_outside_year · amount_too_big
   function validateClaim(sub, ctx) {
     var reason = String((sub && sub.reason) || '').trim();
     if (!reason) return { ok: false, code: 'no_reason' };
     if (reason.length > 500) return { ok: false, code: 'reason_too_long' };
-    var amount = Number(sub && sub.amount);
-    if (!isHalfStep(amount)) return { ok: false, code: 'bad_amount' };
-    if (amount > CLAIM_MAX) return { ok: false, code: 'amount_too_big', max: CLAIM_MAX };
-    var raw = sub && sub.workDates;
-    if (typeof raw === 'string') raw = raw.split(',');
-    if (!raw || !raw.length) return { ok: false, code: 'no_dates' };
-    var dates = [];
+    var raw = parseWorkDays(sub && sub.workDays);
+    if (!raw.length) return { ok: false, code: 'no_dates' };
+    var days = [], seen = {};
     for (var i = 0; i < raw.length; i++) {
-      var d = String(raw[i] || '').trim(); if (!d) continue;
-      if (!isValidISO(d)) return { ok: false, code: 'bad_date' };
-      if (!inYear(d, ctx.year)) return { ok: false, code: 'date_outside_year', year: ctx.year.label };
-      if (dates.indexOf(d) < 0) dates.push(d);
+      var d = raw[i];
+      if (!isValidISO(d.date)) return { ok: false, code: 'bad_date' };
+      if (CLAIM_PORTIONS.indexOf(d.portion) < 0) return { ok: false, code: 'bad_portion', date: d.date };
+      if (!inYear(d.date, ctx.year)) return { ok: false, code: 'date_outside_year', year: ctx.year.label };
+      if (seen[d.date]) continue; seen[d.date] = true;
+      days.push({ date: d.date, portion: d.portion });
     }
-    if (!dates.length) return { ok: false, code: 'no_dates' };
-    dates.sort();
-    return { ok: true, claim: { reason: reason, workDates: dates, amount: amount } };
+    days.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    var amount = claimTotal(days);
+    if (amount > CLAIM_MAX) return { ok: false, code: 'amount_too_big', max: CLAIM_MAX };
+    return { ok: true, claim: { reason: reason, workDays: days, amount: amount } };
   }
   // The Principal's decision on a claim. decision: {approve: true|false, amount (days approved; blank = all), note}.
   // Fewer days than claimed and a decline both NEED a note (it goes in the email). Never above the amount claimed, never zero (that is a decline).
@@ -465,14 +478,14 @@ var DIL = (function () {
   }
 
   return {
-    PORTIONS: PORTIONS, DAY_STATUSES: DAY_STATUSES, CLAIM_STATUSES: CLAIM_STATUSES, CLAIM_MAX: CLAIM_MAX, DAY_SHORT: DAY_SHORT, DAY_LONG: DAY_LONG, MON_SHORT: MON_SHORT, MON_LONG: MON_LONG,
+    PORTIONS: PORTIONS, CLAIM_PORTIONS: CLAIM_PORTIONS, DAY_STATUSES: DAY_STATUSES, CLAIM_STATUSES: CLAIM_STATUSES, CLAIM_MAX: CLAIM_MAX, DAY_SHORT: DAY_SHORT, DAY_LONG: DAY_LONG, MON_SHORT: MON_SHORT, MON_LONG: MON_LONG,
     toISO: toISO, parts: parts, isValidISO: isValidISO, addDays: addDays, daysBetween: daysBetween, weekdayIndex: weekdayIndex, isWeekend: isWeekend, todayISO: todayISO,
     formatLong: formatLong, formatShort: formatShort, formatFull: formatFull, formatMonth: formatMonth, formatUK: formatUK, formatDays: formatDays, formatDateList: formatDateList,
     portionValue: portionValue, total: total,
     yearBounds: yearBounds, academicYearOf: academicYearOf, currentYear: currentYear, requestWindow: requestWindow, inYear: inYear,
     parseTypedDate: parseTypedDate, dateProblem: dateProblem, closureFor: closureFor, monthGrid: monthGrid, monthRange: monthRange, claimMonthGrid: claimMonthGrid, claimMonths: claimMonths,
     nextRequestId: nextRequestId, requestStatus: requestStatus, validateSubmission: validateSubmission, applyDecision: applyDecision, joinWords: joinWords, canWithdraw: canWithdraw, canCancelDay: canCancelDay,
-    isHalfStep: isHalfStep, nextClaimId: nextClaimId, parseClaimDate: parseClaimDate, validateClaim: validateClaim, applyClaimDecision: applyClaimDecision, canWithdrawClaim: canWithdrawClaim, balance: balance, canReduceClaim: canReduceClaim,
+    isHalfStep: isHalfStep, nextClaimId: nextClaimId, parseClaimDate: parseClaimDate, parseWorkDays: parseWorkDays, workDaysCell: workDaysCell, claimTotal: claimTotal, validateClaim: validateClaim, applyClaimDecision: applyClaimDecision, canWithdrawClaim: canWithdrawClaim, balance: balance, canReduceClaim: canReduceClaim,
     norm: norm, findStaff: findStaff, isOnList: isOnList, registerVisitor: registerVisitor, roleFor: roleFor, approvers: approvers, firstName: firstName,
     summarise: summarise, perStaff: perStaff, schoolTotals: schoolTotals, monthBuckets: monthBuckets, offSoon: offSoon, csvOf: csvOf, reasonGroups: reasonGroups
   };

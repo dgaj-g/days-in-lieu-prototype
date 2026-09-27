@@ -320,23 +320,13 @@ h3.section:first-of-type { margin-top: 6px; }
 .card.nothing h3 { font: 700 24px/1.2 var(--display); color: var(--navy); margin: 0 0 8px; }
 .card.nothing p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
 .help.good { color: var(--ok); }
-/* claim calendar: the days picked, shown as chips under the grid */
-.cl-picked { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 4px; }
-.cl-picked .lbl { font-size: 12.5px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
-.cl-picked .none { font-size: 14px; color: var(--faint); }
-.cl-picked .pick { display: inline-flex; align-items: center; gap: 6px; background: var(--navy); color: #fff; border-radius: 999px; padding: 5px 6px 5px 12px; font-size: 13.5px; font-weight: 600; }
-.cl-picked .pick button { appearance: none; border: 0; background: rgba(255,255,255,.18); color: #fff; width: 20px; height: 20px; border-radius: 50%; font-size: 15px; line-height: 1; cursor: pointer; padding: 0; }
-.cl-picked .pick button:hover { background: rgba(255,255,255,.35); }
-.cl-picked .pick button:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 @media (max-width: 720px) {
   /* thumbs, not mouse pointers: nothing tappable under 40px */
   .btn.sm, .seg button, .cal-head .btn, .views button, .filters button { min-height: 40px; }
   .seg button { padding: 8px 12px; }
   .picked-list .x { min-width: 40px; min-height: 40px; font-size: 22px; }
-  .cl-picked .pick { padding: 4px 4px 4px 14px; font-size: 14px; }
-  .cl-picked .pick button { width: 32px; height: 32px; font-size: 18px; }
   .linkish { padding: 8px 2px; }
-  .cl-picked .pick, .chips button { min-height: 40px; }
+  .chips button { min-height: 40px; }
   .doors { grid-template-columns: 1fr; }
   .door-card h3 { font-size: 22px; }
   .views { display: flex; }
