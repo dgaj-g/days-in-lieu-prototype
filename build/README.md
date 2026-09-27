@@ -45,12 +45,15 @@ If `clasp login` is refused ("access blocked"), C2k has not allowed the clasp OA
 
 ### Then, either route
 
-4. In the editor, run the function **setup** once (Run ▸ setup). Grant the permissions it asks for:
+4. In `Code.gs`, put the Principal's C2k address in `PRINCIPAL_EMAIL` at the top: `setup` then makes her an approver
+   from the start, so the link opens on the approval side for her. Run the function **setup** once (Run ▸ setup). Grant the permissions it asks for:
    see and edit this spreadsheet, send email as you, see your email address. Back in the Sheet, six tabs now exist
-   and **Staff** holds the deploying account as the first approver.
-5. **Staff tab**: add the Principal (`Role` = `approver`) if the deploying account is not them, and any staff you
+   and **Staff** holds the deploying account and the Principal as approvers.
+5. **Staff tab**: add any staff you
    want pre-loaded (`Role` = `staff`, `Active` = `yes`). Anyone else with a `@c2ken.net` account is added
    automatically as staff the first time they open the app and is asked for their name.
+   Roles are exclusive: an approver sees only the approval side (To decide, Decided, Overview, Staff list) and cannot
+   claim or book. The Principal's own days in lieu are handled outside this app.
 6. **Config tab**: `principalName` (how sentences refer to the approver, e.g. `Mrs Smith` or `the Principal`),
    `quickReasons` (the quick-fill buttons), the academic year start (1 September by default).
 7. **Closures tab**: `From`, `To`, `Label` — one row per holiday or closure, dates as `YYYY-MM-DD`. These grey out

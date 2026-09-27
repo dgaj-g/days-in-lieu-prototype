@@ -64,7 +64,8 @@ var DILApp = (function () {
   /* ---------- shell ---------- */
   function navTabs() {
     var me = st.me, tabs = [];
-    if (me.role === 'approver') { tabs.push(['queue', S.nav.approver.queue, true], ['decided', S.nav.approver.decided], ['overview', S.nav.approver.overview], ['staff', S.nav.approver.staff], ['dashboard', S.nav.approver.mine]); }
+    // The Principal's own days in lieu are handled outside this app: an approver sees only the approval side.
+    if (me.role === 'approver') { tabs.push(['queue', S.nav.approver.queue, true], ['decided', S.nav.approver.decided], ['overview', S.nav.approver.overview], ['staff', S.nav.approver.staff]); }
     else { tabs.push(['dashboard', S.nav.staff.dashboard], ['claim', S.nav.staff.claim], ['book', S.nav.staff.book]); }
     return '<nav class="nav"><div class="wrap">' + tabs.map(function (t) { return '<button class="tab" data-tab="' + t[0] + '">' + esc(t[1]) + (t[2] ? '<span class="badge" id="badge"' + (st.badge ? '' : ' hidden') + '>' + esc(S.nav.queueBadge(st.badge)) + '</span>' : '') + '</button>'; }).join('') + '</div></nav>';
   }

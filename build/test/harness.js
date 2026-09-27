@@ -45,22 +45,22 @@ function rows(name) { return book.sheets[name].rows.slice(1); }
 // future weekdays from today, skipping weekends and closures
 function weekday(offset) { let d = TODAY, k = 0; while (k < offset) { d = D.addDays(d, 1); if (!D.isWeekend(d)) k++; } return d; }
 
-// 1. set up as the Principal
-viewer = 'principal001@c2ken.net'; vm.runInContext('setup()', ctx);
+// 1. set up as an admin account, with the Principal named in PRINCIPAL_EMAIL
+viewer = 'admin@c2ken.net'; vm.runInContext("PRINCIPAL_EMAIL = 'principal001@c2ken.net'; setup()", ctx);
 eq(Object.keys(book.sheets).sort(), ['Claims', 'Closures', 'Config', 'Days', 'Requests', 'Staff'], 'setup creates the six sheets');
-eq(rows('Staff'), [['principal001@c2ken.net', '', 'approver', 'yes']], 'the person who set up is the first approver');
+eq(rows('Staff'), [['admin@c2ken.net', '', 'approver', 'yes'], ['principal001@c2ken.net', '', 'approver', 'yes']], 'the deploying account and the Principal are both approvers');
 eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons'], 'config defaults');
 book.sheets.Closures.appendRow([weekday(3), weekday(3), 'Inset day']);
 let me = as('principal001@c2ken.net', 'whoami');
 eq([me.role, me.needName, me.queueCount, !!me.sheetUrl], ['approver', true, 0, true], 'principal whoami: approver, needs a name, sees the sheet');
 eq(me.cfg.quickReasons, ['Residential trip', 'Weekend fixture', 'SEAG Help'], 'quick reasons come from Config as a list');
 eq(as('principal001@c2ken.net', 'setMyName', 'The Principal'), { ok: true, name: 'The Principal' }, 'principal names themselves');
-eq(rows('Staff')[0][1], 'The Principal', 'name written to the Staff sheet');
+eq(rows('Staff')[1][1], 'The Principal', 'name written to the Staff sheet');
 
 // 2. a new teacher arrives
 me = as('dgartland021@c2ken.net', 'whoami');
 eq([me.role, me.needName, me.removed], ['staff', true, false], 'unknown c2k account is added as staff, needs a name');
-eq(rows('Staff').length, 2, 'added to the Staff sheet');
+eq(rows('Staff').length, 3, 'added to the Staff sheet');
 eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'x', workDays: [{ date: TODAY, portion: 'full' }] }), { ok: false, code: 'need_name' }, 'cannot claim without a name');
 as('dgartland021@c2ken.net', 'setMyName', 'Damien Gartland');
 me = as('dgartland021@c2ken.net', 'whoami'); eq([me.name, me.needName, me.sheetUrl], ['Damien Gartland', false, ''], 'named; staff never see the sheet link');
@@ -78,7 +78,7 @@ ok(c1.ok && c1.claim.status === 'pending', 'claim submitted', c1);
 eq(c1.claim.amountClaimed, D.claimTotal(workDays), 'amount claimed is the sum of the days');
 eq(c1.claim.workDays, workDays.slice().sort((a, b) => a.date < b.date ? -1 : 1), 'work days come back sorted with portions');
 eq(rows('Claims')[0][4], D.workDaysCell(c1.claim.workDays), 'WorkDays cell holds the compact form');
-eq([mails.length, lastMail().to], [1, 'principal001@c2ken.net'], 'claim email goes to the approver');
+eq([mails.length, lastMail().to], [1, 'admin@c2ken.net,principal001@c2ken.net'], 'claim email goes to every approver');
 ok(/claims/.test(lastMail().subject) && lastMail().htmlBody.indexOf('Open the claim') > 0, 'claim email subject and body', lastMail().subject);
 eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Old', workDays: [{ date: D.addDays(year.start, -1), portion: 'full' }] }).code, 'date_outside_year', 'last year refused: no carry-over');
 eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Bad', workDays: [{ date: TODAY, portion: 'am' }] }).code, 'bad_portion', 'a booking portion is not a claim portion');
@@ -109,7 +109,7 @@ mails = [];
 let bk1 = call('submit', { reason: 'Long weekend', days: [{ date: weekday(1), portion: 'am' }, { date: weekday(2), portion: 'pm' }] });
 eq([bk1.ok, bk1.request.status, bk1.request.total, bk1.balance.left, bk1.balance.pending], [true, 'pending', 1, 0, 1], 'booking of two halves sent; 0 left while awaiting');
 eq(rows('Requests').length + rows('Days').length, 3, 'one request row, two day rows');
-eq(lastMail().to, 'principal001@c2ken.net', 'booking email to the approver');
+eq(lastMail().to, 'admin@c2ken.net,principal001@c2ken.net', 'booking email to every approver');
 eq(call('submit', { reason: '', days: [{ date: weekday(1), portion: 'pm' }] }).code, 'already_requested', 'same day again refused');
 
 // 7. Principal declines one half with a reason, approves the other
@@ -135,10 +135,10 @@ eq(call('staffAdd', { email: 'someone@gmail.com', name: 'X', role: 'staff' }).co
 eq(call('staffAdd', { email: 'chughes400@c2ken.net', name: 'Claire', role: 'staff' }).code, 'duplicate', 'no duplicates');
 eq(call('staffRemove', 'principal001@c2ken.net').code, 'not_allowed', 'cannot remove yourself');
 eq(call('staffRole', 'chughes400@c2ken.net', 'approver'), { ok: true }, 'promote to approver');
-eq(call('staffList').staff.map(s => s.role).sort(), ['approver', 'approver', 'staff'], 'staff list shows roles');
+eq(call('staffList').staff.map(s => s.role).sort(), ['approver', 'approver', 'approver', 'staff'], 'staff list shows roles');
 eq(call('staffRemove', 'chughes400@c2ken.net'), { ok: true }, 'remove');
 eq(as('chughes400@c2ken.net', 'whoami').removed, true, 'a removed account sees the removed door');
-eq(rows('Staff').length, 3, 'removed stays on the sheet as inactive');
+eq(rows('Staff').length, 4, 'removed stays on the sheet as inactive');
 
 // 9. withdraw and cancel
 viewer = 'dgartland021@c2ken.net';
@@ -161,6 +161,8 @@ eq(rows('Claims').filter(r => r[0] === c3.claimId)[0][8], 'pending', 'and the cl
 
 // 11. role guards and the JSON wire
 threw = false; try { as('dgartland021@c2ken.net', 'queue'); } catch (e) { threw = true; } ok(threw, 'staff cannot open the queue');
+threw = false; try { as('principal001@c2ken.net', 'myDays'); } catch (e) { threw = true; } ok(threw, 'the Principal has no My days: approver cannot use staff calls');
+threw = false; try { as('principal001@c2ken.net', 'submitClaim', { reason: 'x', workDays: [{ date: TODAY, portion: 'full' }] }); } catch (e) { threw = true; } ok(threw, 'approver cannot claim');
 threw = false; try { as('nobody@c2ken.net', 'setMyName', 'X'); call('nope'); } catch (e) { threw = true; } ok(threw, 'unknown call name throws');
 ok(JSON.stringify(as('principal001@c2ken.net', 'decided')).indexOf('_row') < 0, 'sheet row numbers never leave the server');
 

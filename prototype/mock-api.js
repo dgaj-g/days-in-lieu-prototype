@@ -98,7 +98,8 @@ window.DIL_API = (function () {
   function pendingBookings() { return requests.map(reqView).filter(function (r) { return r.status === 'pending'; }).sort(function (a, b) { return a.submittedAt < b.submittedAt ? -1 : 1; }); }
   function queueCount() { return role() === 'approver' ? pendingClaims().length + pendingBookings().length : 0; }
   function rawRow(email) { var e = DIL.norm(email); return staff.filter(function (s) { return DIL.norm(s.email) === e; })[0] || null; }
-  function need(r) { if (role() !== r && !(r === 'staff' && role() === 'approver')) throw new Error('not allowed'); }
+  // Roles are exclusive: an approver's own days in lieu are handled outside this app, so approvers cannot use the staff calls.
+  function need(r) { var me = role(); if (r === 'any' ? me === 'unknown' : me !== r) throw new Error('not allowed'); }
   var api = {
     _setViewer: function (email) { viewer.email = email; }, _setSlow: function (v) { slow = !!v; }, _today: TODAY,
     _forceWithdraw: function (id) { days.forEach(function (d) { if (d.requestId === id && d.status === 'pending') d.status = 'withdrawn'; }); }, // sweep hook: the staff member withdraws under the Principal's feet
@@ -107,7 +108,7 @@ window.DIL_API = (function () {
     _forceDecideClaim: function (id) { claims.forEach(function (c) { if (c.claimId === id && c.status === 'pending') { c.status = 'approved'; c.amountApproved = c.amountClaimed; c.decidedAt = TODAY; c.decidedBy = P; } }); },
     whoami: function () { return wait().then(function () { var reg = viewer.email ? DIL.registerVisitor(staff, viewer.email, autoName()) : { code: 'no_email' }; if (reg.code === 'added') staff.push(reg.row);
       var s = me(); return { ok: true, email: viewer.email, name: s ? s.name : '', autoName: autoName(), needName: !!(s && !s.name), removed: reg.code === 'removed', role: role(), queueCount: queueCount(), today: TODAY, appUrl: APP_URL, sheetUrl: 'https://docs.google.com/spreadsheets/d/EXAMPLE', cfg: { principalName: cfg.principalName, quickReasons: cfg.quickReasons }, year: DIL.currentYear(TODAY, cfg), window: DIL.requestWindow(TODAY, cfg) }; }); },
-    setMyName: function (name) { return wait().then(function () { need('staff'); name = String(name || '').trim(); if (!name) return { ok: false, code: 'need_name' }; me().name = name; return { ok: true, name: name }; }); },
+    setMyName: function (name) { return wait().then(function () { need('any'); name = String(name || '').trim(); if (!name) return { ok: false, code: 'need_name' }; me().name = name; return { ok: true, name: name }; }); },
     // ----- staff: my days -----
     myDays: function (startYear) { return wait().then(function () { need('staff'); var year = startYear ? DIL.yearBounds(startYear, cfg) : DIL.currentYear(TODAY, cfg);
       var mine = requests.filter(function (r) { return r.staffEmail === viewer.email && r.startYear === year.startYear; }).map(reqView).sort(function (a, b) { return a.submittedAt < b.submittedAt ? 1 : -1; });

@@ -53,7 +53,9 @@ Do it properly:
 
 Follow `build/README.md` step by step, signed in Chrome as the account that should own the Sheet and send the
 emails (the Principal's, or the school admin account — confirm with Damien which). `clasp` route first; paste-by-hand
-if C2k blocks the clasp sign-in. Run `setup`, grant the permissions, fill the Staff tab (Principal as `approver`),
+if C2k blocks the clasp sign-in. Ask Damien for the Principal's C2k address and put it in `PRINCIPAL_EMAIL` at the top
+of `build/src/Code.gs` BEFORE running `setup`, so the link opens on the approval side for her. Approvers have no
+My days: the Principal's own days in lieu are outside this app. Run `setup`, grant the permissions, check the Staff tab,
 Config (`principalName`, `quickReasons`), Closures (this year's holidays, `YYYY-MM-DD`). Deploy as Web app,
 Execute as Me, access Anyone within c2ken.net. Send a real claim as Damien, approve it as the Principal, book a day,
 decide it; check every email arrives and reads correctly.

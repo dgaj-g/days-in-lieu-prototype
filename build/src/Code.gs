@@ -4,6 +4,9 @@
    and every word of English in Strings.gs (S) — this file only reads and writes the Sheet and sends the emails.
    Build: Fable 5.1, 27 Sep 2026. */
 
+// The Principal's C2k address. setup() puts it on the Staff tab as an approver, so the approval side opens for her the first time she follows the link.
+var PRINCIPAL_EMAIL = '';   // e.g. 'jbloggs123@c2ken.net' — fill in before running setup (or add her on the Staff tab afterwards)
+
 var SHEETS = ['Staff', 'Config', 'Closures', 'Claims', 'Requests', 'Days'];
 var HEAD = {
   Staff:    ['Email', 'Name', 'Role', 'Active'],
@@ -127,7 +130,8 @@ function yearsSeen(st, email) {
   ys[DIL.currentYear(today(), st.cfg).startYear] = 1;
   return Object.keys(ys).map(Number).sort(function (a, b) { return b - a; }).map(function (y) { return DIL.yearBounds(y, st.cfg); });
 }
-function need(st, email, role) { var r = DIL.roleFor(email, st.staff); if (r !== role && !(role === 'staff' && r === 'approver')) throw new Error('not allowed'); }
+// Roles are exclusive: the Principal's own days in lieu are handled outside this app, so an approver cannot use the staff calls.
+function need(st, email, role) { var r = DIL.roleFor(email, st.staff); if (role === 'any' ? r === 'unknown' : r !== role) throw new Error('not allowed'); }
 function me(st, email) { var s = DIL.findStaff(email, st.staff); if (!s) throw new Error('not on the list'); return s; }
 
 /* ---------- the API ---------- */
@@ -141,7 +145,7 @@ var API = {
              year: DIL.currentYear(today(), st.cfg), window: DIL.requestWindow(today(), st.cfg) };
   },
   setMyName: function (name) {
-    var email = viewerEmail(), st = loadStore(); need(st, email, 'staff'); name = String(name || '').trim(); if (!name) return { ok: false, code: 'need_name' };
+    var email = viewerEmail(), st = loadStore(); need(st, email, 'any'); name = String(name || '').trim(); if (!name) return { ok: false, code: 'need_name' };
     var s = me(st, email); s.name = name; withLock(function () { saveRow('Staff', s); }); return { ok: true, name: name };
   },
   // ----- staff: my days -----
@@ -292,7 +296,7 @@ function setup() {
       s.getRange('A:Z').setNumberFormat('@');                   // dates are ISO text, never Sheet dates
       s.getRange(1, 1, 1, HEAD[name].length).setValues([HEAD[name]]).setFontWeight('bold'); s.setFrozenRows(1);
       if (name === 'Config') CONFIG_DEFAULTS.forEach(function (row) { s.appendRow([row[0], row[1], row[2]]); });
-      if (name === 'Staff') { var e = viewerEmail(); if (e) s.appendRow([e, '', 'approver', 'yes']); }
+      if (name === 'Staff') { var e = viewerEmail(), p = DIL.norm(PRINCIPAL_EMAIL); if (e) s.appendRow([e, '', 'approver', 'yes']); if (p && p !== e) s.appendRow([p, '', 'approver', 'yes']); }
     }
   });
   var first = book.getSheets()[0]; if (SHEETS.indexOf(first.getName()) < 0 && book.getSheets().length > SHEETS.length) book.deleteSheet(first);

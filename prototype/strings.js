@@ -40,7 +40,7 @@ var S = (function () {
     claimPortion: { full: 'Full day', half: 'Half day' },
     nav: {
       staff: { dashboard: 'My days', claim: 'Claim days', book: 'Book a day off' },
-      approver: { queue: 'To decide', decided: 'Decided', overview: 'Overview', staff: 'Staff list', mine: 'My days' },
+      approver: { queue: 'To decide', decided: 'Decided', overview: 'Overview', staff: 'Staff list' },
       queueBadge: function (n) { return n ? String(n) : ''; }
     },
     doors: {
