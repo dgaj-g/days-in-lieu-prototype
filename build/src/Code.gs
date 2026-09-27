@@ -24,7 +24,8 @@ var CONFIG_DEFAULTS = [
   ['yearOverride', '', 'Leave blank. A start year (e.g. 2026) forces that academic year for testing.'],
   ['nextYearOpens', '', 'Leave blank, or MM-DD from which bookings may be made into next year (e.g. 06-01).'],
   ['principalName', 'the Principal', 'How the app refers to the approver in sentences, lower case.'],
-  ['quickReasons', 'Residential trip, Weekend fixture, SEAG Help', 'Quick-fill buttons on the claim form, comma separated.']
+  ['quickReasons', 'Residential trip, Weekend fixture, SEAG Help', 'Quick-fill buttons on the claim form, comma separated.'],
+  ['appUrl', '', 'The web app link (Deploy → Manage deployments, ends /exec). Every email links here.']
 ];
 var NUMERIC = { Claims: ['AmountClaimed', 'AmountApproved', 'StartYear'], Requests: ['StartYear'], Days: ['Value', 'StartYear'] };   // per sheet: Config's Value column is text
 
@@ -73,7 +74,12 @@ function displayName(email) {
   }
 }
 function today() { return DIL.todayISO(new Date()); }
-function appUrl() { try { return ScriptApp.getService().getUrl() || ''; } catch (err) { return ''; } }
+// The web app link for emails. Config's appUrl wins: ScriptApp's own answer is the editor's /dev link whenever the call
+// did not come through the live /exec deployment (proved 27 Sep 2026 — an editor-run test mailed a /dev link).
+function appUrl(st) {
+  var set = st && st.cfg && String(st.cfg.appUrl || '').trim(); if (set) return set;
+  try { return ScriptApp.getService().getUrl() || ''; } catch (err) { return ''; }
+}
 
 /* ---------- the Sheet ---------- */
 function ss() { return SpreadsheetApp.getActive(); }
@@ -166,7 +172,7 @@ var API = {
     else if (reg.code === 'known' && !reg.row.name) { auto = displayName(email); if (auto) { reg.row.name = auto; withLock(function () { saveRow('Staff', reg.row); }); } }
     var s = email ? DIL.findStaff(email, st.staff) : null, role = email ? DIL.roleFor(email, st.staff) : 'unknown';
     return { ok: true, email: email, name: s ? s.name : '', autoName: auto, needName: !!(s && !s.name), removed: reg.code === 'removed', role: role, queueCount: queueCount(st, email), today: today(),
-             appUrl: appUrl(), sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
+             appUrl: appUrl(st), sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
              year: DIL.currentYear(today(), st.cfg), window: DIL.requestWindow(today(), st.cfg) };
   },
   setMyName: function (name) {
@@ -191,7 +197,7 @@ var API = {
       appendRow('Claims', claimRow(k)); return k;
     });
     st.claims.push(c);
-    sendMail(approverEmails(st), S.email.newClaim({ staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: appUrl() + '?c=' + c.claimId }));
+    sendMail(approverEmails(st), S.email.newClaim({ staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: appUrl(st) + '?c=' + c.claimId }));
     return { ok: true, claim: claimView(st, c), balance: balanceOf(st, email, year) };
   },
   withdrawClaim: function (id) {
@@ -199,7 +205,7 @@ var API = {
       var st = loadStore(); need(st, email, 'staff'); var c = st.claims.filter(function (x) { return x.claimId === id && DIL.norm(x.staffEmail) === email; })[0]; if (!c) return { ok: false, code: 'not_found' };
       if (!DIL.canWithdrawClaim(c)) return { ok: false, code: 'not_pending', claim: claimView(st, c) };
       c.status = 'withdrawn'; saveRow('Claims', claimRow(c));
-      sendMail(approverEmails(st), S.email.claimWithdrawn({ staffName: c.staffName, claim: c, url: appUrl() })); return { ok: true };
+      sendMail(approverEmails(st), S.email.claimWithdrawn({ staffName: c.staffName, claim: c, url: appUrl(st) })); return { ok: true };
     });
   },
   // ----- staff: bookings -----
@@ -214,7 +220,7 @@ var API = {
       appendRow('Requests', requestRow(r)); st.requests.push(r);
       v.days.forEach(function (d, i) { var day = { dayId: id + '-' + (i + 1), requestId: id, staffEmail: email, staffName: s.name, date: d.date, portion: d.portion, value: d.value, reason: d.reason, status: 'pending', decisionNote: '', decidedAt: '', startYear: DIL.academicYearOf(d.date, st.cfg).startYear }; appendRow('Days', day); st.days.push(day); });
       var b = balanceOf(st, email, year);
-      sendMail(approverEmails(st), S.email.newRequest({ staffName: s.name, total: v.total, days: v.days, note: v.sharedReason, replaces: v.replaces, balance: b, url: appUrl() + '?r=' + id }));
+      sendMail(approverEmails(st), S.email.newRequest({ staffName: s.name, total: v.total, days: v.days, note: v.sharedReason, replaces: v.replaces, balance: b, url: appUrl(st) + '?r=' + id }));
       return { ok: true, request: reqView(st, r), balance: b };
     });
   },
@@ -223,14 +229,14 @@ var API = {
       var st = loadStore(); need(st, email, 'staff'); var r = st.requests.filter(function (x) { return x.id === id && DIL.norm(x.staffEmail) === email; })[0]; if (!r) return { ok: false, code: 'not_found' };
       var ds = st.days.filter(function (d) { return d.requestId === id; }); if (!DIL.canWithdraw(ds)) return { ok: false, code: 'not_pending' };
       ds.forEach(function (d) { if (d.status === 'pending') { d.status = 'withdrawn'; saveRow('Days', d); } });
-      sendMail(approverEmails(st), S.email.withdrawn({ staffName: r.staffName, total: DIL.total(ds), days: ds, url: appUrl() })); return { ok: true };
+      sendMail(approverEmails(st), S.email.withdrawn({ staffName: r.staffName, total: DIL.total(ds), days: ds, url: appUrl(st) })); return { ok: true };
     });
   },
   cancelDay: function (dayId) {
     var email = viewerEmail(); return withLock(function () {
       var st = loadStore(); need(st, email, 'staff'); var d = st.days.filter(function (x) { return x.dayId === dayId && DIL.norm(x.staffEmail) === email; })[0]; if (!d || !DIL.canCancelDay(d, today())) return { ok: false, code: 'not_allowed' };
       d.status = 'cancelled'; saveRow('Days', d);
-      sendMail(approverEmails(st), S.email.cancelled({ staffName: d.staffName, day: d, url: appUrl() })); return { ok: true };
+      sendMail(approverEmails(st), S.email.cancelled({ staffName: d.staffName, day: d, url: appUrl(st) })); return { ok: true };
     });
   },
   // ----- approver: to decide -----
@@ -249,7 +255,7 @@ var API = {
       for (var k in res.claim) if (k !== '_row') c[k] = res.claim[k];
       var b = balanceOf(st, c.staffEmail, year);
       // The email first, then the Sheet: a decision the person was never told about is not a decision.
-      sendMail(c.staffEmail, S.email.claimDecision({ first: DIL.firstName(c.staffName), principalName: st.cfg.principalName, claim: c, yearLabel: year.label, balance: b, url: appUrl() }));
+      sendMail(c.staffEmail, S.email.claimDecision({ first: DIL.firstName(c.staffName), principalName: st.cfg.principalName, claim: c, yearLabel: year.label, balance: b, url: appUrl(st) }));
       saveRow('Claims', claimRow(c));
       return { ok: true, claim: claimView(st, c), balance: b, queueCount: queueCount(st, email) };
     });
@@ -261,7 +267,7 @@ var API = {
       res.days.forEach(function (nd) { var d = st.days.filter(function (x) { return x.dayId === nd.dayId; })[0]; for (var k in nd) if (k !== '_row') d[k] = nd[k]; });
       r.decisionNote = res.note; r.decidedAt = today(); r.decidedBy = email;
       var b = balanceOf(st, r.staffEmail, DIL.yearBounds(Number(r.startYear), st.cfg));
-      sendMail(r.staffEmail, S.email.decision({ first: DIL.firstName(r.staffName), principalName: st.cfg.principalName, submitted: r.submittedAt, days: res.days, outcome: res.outcome, note: r.decisionNote, yearLabel: r.year, balance: b, url: appUrl() }));
+      sendMail(r.staffEmail, S.email.decision({ first: DIL.firstName(r.staffName), principalName: st.cfg.principalName, submitted: r.submittedAt, days: res.days, outcome: res.outcome, note: r.decisionNote, yearLabel: r.year, balance: b, url: appUrl(st) }));
       ds.forEach(function (d) { saveRow('Days', d); }); saveRow('Requests', requestRow(r));
       return { ok: true, request: reqView(st, r), balance: b, queueCount: queueCount(st, email) };
     });

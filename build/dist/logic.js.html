@@ -62,10 +62,12 @@ var DIL = (function () {
       else if (a.m === b.m && a.y === b.y) s = DAY_SHORT[weekdayIndex(r.from)] + ' ' + a.d + ' – ' + dm(r.to);
       else s = dm(r.from) + (oneYear ? '' : ' ' + a.y) + ' – ' + dm(r.to);
       if (!oneYear) s += ' ' + b.y;
-      return r.half ? s + ' (half day)' : s;
+      return s;
     });
-    var joined = out.length === 1 ? out[0] : out.slice(0, -1).join(', ') + ' and ' + out[out.length - 1];
-    return oneYear ? joined + ' ' + parts(runs[0].from).y : joined;
+    // the year sits with its date: "Thu 24 Sep 2026 (half day)", never "Thu 24 Sep (half day) 2026"
+    if (oneYear) out[out.length - 1] += ' ' + parts(runs[0].from).y;
+    out = out.map(function (s, i) { return runs[i].half ? s + ' (half day)' : s; });
+    return out.length === 1 ? out[0] : out.slice(0, -1).join(', ') + ' and ' + out[out.length - 1];
   }
 
   function formatDays(n) {

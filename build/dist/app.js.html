@@ -641,9 +641,9 @@ var DILApp = (function () {
         var tot = b.approved + b.pending;
         return '<div class="col' + (b.m === r.currentMonth ? ' now' : '') + '"><div class="v">' + (tot ? esc(num(tot)) : '') + '</div>' + (b.pending ? '<div class="b p" style="height:' + (b.pending / max * 100) + '%"></div>' : '') + '<div class="b" style="height:' + Math.max(1.5, b.approved / max * 100) + '%"></div><div class="l">' + esc(b.label) + '</div></div>';
       }).join('') + '</div><div class="legend" style="margin-top:14px"><span><i style="background:var(--navy)"></i>' + esc(S.overview.byMonthLegend.approved) + '</span><span><i style="background:var(--gold)"></i>' + esc(S.overview.byMonthLegend.pending) + '</span></div></div>';
-      h += '<div class="card"><h3>' + esc(S.overview.byStaff) + '</h3>' + (r.rows.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>' + esc(C.name) + '</th>' + keys.map(function (k) { return '<th>' + esc(C[k]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
-        r.rows.map(function (x) { return '<tr><td>' + esc(x.name) + '</td>' + keys.map(function (k) { return '<td class="' + (x[k] ? '' : 'z') + '">' + esc(num(x[k])) + '</td>'; }).join('') + '</tr>'; }).join('') +
-        '<tr class="total"><td></td>' + keys.map(function (k) { return '<td>' + esc(num(t[k])) + '</td>'; }).join('') + '</tr></tbody></table></div><p class="muted small" style="margin:12px 0 0">' + esc(S.overview.colsHelp) + '</p>' : '<p class="empty">' + esc(S.overview.byStaffEmpty) + '</p>') + '</div>';
+      h += '<div class="card"><h3>' + esc(S.overview.byStaff) + '</h3>' + (r.rows.length ? '<div class="table-wrap"><table class="table by"><thead><tr><th>' + esc(C.name) + '</th>' + keys.map(function (k) { return '<th>' + esc(C[k]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        r.rows.map(function (x) { return '<tr><td>' + esc(x.name) + '</td>' + keys.map(function (k) { return '<td class="' + (x[k] ? '' : 'z') + '" data-l="' + esc(C[k]) + '">' + esc(num(x[k])) + '</td>'; }).join('') + '</tr>'; }).join('') +
+        '<tr class="total"><td data-l="' + esc(C.total) + '"></td>' + keys.map(function (k) { return '<td data-l="' + esc(C[k]) + '">' + esc(num(t[k])) + '</td>'; }).join('') + '</tr></tbody></table></div><p class="muted small" style="margin:12px 0 0">' + esc(S.overview.colsHelp) + '</p>' : '<p class="empty">' + esc(S.overview.byStaffEmpty) + '</p>') + '</div>';
       m.innerHTML = h;
     }).catch(function () { if (st.tab === 'overview') m.innerHTML = errorCard(); });
   }

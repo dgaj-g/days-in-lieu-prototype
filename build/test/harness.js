@@ -59,7 +59,7 @@ eq([pr.role, pr.email, pr.removed], ['approver', 'fmcalinden045@c2ken.net', fals
 eq(rows('Staff').length, 2, 'no duplicate row for the alias');
 eq(D.norm('FMcAlinden045@OurLadysGrammar.Newry.NI.sch.uk'), 'fmcalinden045@c2ken.net', 'norm folds domain and case');
 eq(D.norm('chughes400@c2ken.net'), 'chughes400@c2ken.net', 'c2ken form unchanged');
-eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons'], 'config defaults');
+eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons', 'appUrl'], 'config defaults');
 book.sheets.Closures.appendRow([weekday(3), weekday(3), 'Inset day']);
 let me = as('fmcalinden045@c2ken.net', 'whoami');
 eq([me.role, me.needName, me.queueCount, !!me.sheetUrl], ['approver', true, 0, true], 'principal whoami: approver, needs a name, sees the sheet');
@@ -90,6 +90,7 @@ eq(c1.claim.workDays, workDays.slice().sort((a, b) => a.date < b.date ? -1 : 1),
 eq(rows('Claims')[0][4], D.workDaysCell(c1.claim.workDays), 'WorkDays cell holds the compact form');
 eq([mails.length, lastMail().to], [1, 'admin@c2ken.net,fmcalinden045@c2ken.net'], 'claim email goes to every approver');
 ok(/claims/.test(lastMail().subject) && lastMail().htmlBody.indexOf('Open the claim') > 0, 'claim email subject and body', lastMail().subject);
+ok(lastMail().htmlBody.indexOf('/TEST/exec?c=') > 0, 'blank Config appUrl: email links to the service URL');
 eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Old', workDays: [{ date: D.addDays(year.start, -1), portion: 'full' }] }).code, 'date_outside_year', 'last year refused: no carry-over');
 eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Bad', workDays: [{ date: TODAY, portion: 'am' }] }).code, 'bad_portion', 'a booking portion is not a claim portion');
 
@@ -116,10 +117,12 @@ let d1 = call('myDays'); eq([d1.balance.approved, d1.balance.left], [1, 1], 'tea
 eq(call('submit', { reason: '', days: [{ date: weekday(1), portion: 'full' }, { date: weekday(2), portion: 'am' }] }).code, 'over_balance', '1½ booked against 1 left refused');
 eq(call('submit', { reason: '', days: [{ date: weekday(3), portion: 'full' }] }).code, 'closure', 'inset day refused');
 mails = [];
+book.sheets.Config.rows.find(r => r[0] === 'appUrl')[1] = 'https://script.google.com/a/macros/c2ken.net/s/LIVE/exec';
 let bk1 = call('submit', { reason: 'Long weekend', days: [{ date: weekday(1), portion: 'am' }, { date: weekday(2), portion: 'pm' }] });
 eq([bk1.ok, bk1.request.status, bk1.request.total, bk1.balance.left, bk1.balance.pending], [true, 'pending', 1, 0, 1], 'booking of two halves sent; 0 left while awaiting');
 eq(rows('Requests').length + rows('Days').length, 3, 'one request row, two day rows');
 eq(lastMail().to, 'admin@c2ken.net,fmcalinden045@c2ken.net', 'booking email to every approver');
+ok(lastMail().htmlBody.indexOf('/LIVE/exec?r=') > 0, 'Config appUrl wins over the service URL in emails');
 eq(call('submit', { reason: '', days: [{ date: weekday(1), portion: 'pm' }] }).code, 'already_requested', 'same day again refused');
 
 // 7. Principal declines one half with a reason, approves the other

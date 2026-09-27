@@ -48,6 +48,7 @@ h1,h2,h3{margin:0;font-weight:500}
 .tab:hover{color:var(--navy)}
 .tab.on{color:var(--navy);border-bottom-color:var(--gold)}
 .tab .badge{background:var(--gold);color:var(--navy-900);font-weight:700;font-size:12px;min-width:22px;height:22px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;padding:0 7px}
+.tab .badge[hidden]{display:none}
 
 main{padding:28px 0 72px}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
@@ -261,6 +262,19 @@ select{width:auto;padding-right:32px}
 .proto select{width:auto;padding:3px 26px 3px 8px;font-size:12.5px;border-radius:6px}
 .proto label{display:flex;gap:6px;align-items:center}
 
+/* by-member table on a phone: one block per person, every figure labelled, nothing hidden off the right edge */
+@media (max-width:600px){
+  .table.by thead{display:none}
+  .table.by,.table.by tbody{display:block}
+  .table.by tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px;padding:12px 0;border-bottom:1px solid var(--hair-2)}
+  .table.by td{display:block;border:0;padding:0;text-align:left;font-size:17px;font-weight:600}
+  .table.by td::before{content:attr(data-l);display:block;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .table.by td:first-child{grid-column:1/-1;font-size:16px}
+  .table.by td:first-child::before{content:none}
+  .table.by tr.total{border-top:2px solid var(--hair);border-bottom:0}
+  .table.by tr.total td:first-child::before{content:attr(data-l);font-size:16px;letter-spacing:0;text-transform:none;color:var(--ink)}
+}
+
 /* staff list on a phone: one block per person, actions under the name (the Principal must see the buttons without scrolling sideways) */
 @media (max-width:600px){
   .table.staff thead{display:none}
@@ -325,7 +339,11 @@ h3.section:first-of-type { margin-top: 6px; }
   .btn.sm, .seg button, .cal-head .btn, .views button, .filters button { min-height: 40px; }
   .seg button { padding: 8px 12px; }
   .picked-list .x { min-width: 40px; min-height: 40px; font-size: 22px; }
-  .linkish { padding: 8px 2px; }
+  .linkish { padding: 10px 2px; }
+  .cal-head .btn { min-width: 44px; }
+  /* all four approver tabs on a 375px phone: none hidden off the edge */
+  .nav .wrap { gap: 2px; }
+  .tab { flex: 1 1 auto; justify-content: center; padding: 14px 6px 11px; font-size: 14.5px; gap: 6px; }
   .chips button { min-height: 40px; }
   .doors { grid-template-columns: 1fr; }
   .door-card h3 { font-size: 22px; }
