@@ -1,13 +1,14 @@
 /* Days in Lieu · app.js — the FINAL user interface. Uses DIL (logic.js) and S (strings.js) unchanged.
    Talks to window.DIL_API: mock-api.js in the prototype, api-gas.js (google.script.run) in the build.
-   No English in this file: every visible string comes from S. Design window: Fable 5.1, 17 Sep 2026. */
+   No English in this file: every visible string comes from S. Design window: Fable 5.1, 17 Sep 2026; claims vs bookings 27 Sep 2026. */
 var DILApp = (function () {
   'use strict';
   var esc = S.esc, api = function () { return window.DIL_API; };
   var st = {};
-  function reset() { st = { me: null, tab: null, inflight: 0, years: {}, nr: null, q: {}, decidedFilter: 'all', badge: 0 }; }
+  function reset() { st = { me: null, tab: null, inflight: 0, years: {}, nr: null, cl: null, q: {}, c: {}, qv: null, dv: null, decidedFilter: 'all', claimFilter: 'all', badge: 0 }; }
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+  function who() { return st.me.cfg.principalName; }
 
   /* ---------- server calls, waiting line, busy buttons, toasts ---------- */
   function call(name) {
@@ -38,32 +39,32 @@ var DILApp = (function () {
   /* ---------- small renderers ---------- */
   function num(n) { n = Number(n) || 0; var w = Math.floor(n); return (n % 1 ? (w ? w : '') + '½' : String(w)) || '0'; }
   function chip(status, extraClass) { return '<span class="chip ' + esc(status) + (extraClass ? ' ' + extraClass : '') + '">' + esc(S.status[status] || status) + '</span>'; }
+  function claimChip(c) { return '<span class="chip ' + esc(c.status) + '">' + esc(S.claimStatus.chip(c)) + '</span>'; }
   function dayChip(d) { var s = d.status === 'approved' && d.date < st.me.today ? 'taken' : d.status; return chip(s); }
   function loading() { return '<div class="card loading-card" aria-busy="true"><span class="sr">' + esc(S.common.pageLoading) + '</span><div class="skel big"></div><div class="skel line"></div><div class="skel line" style="width:50%"></div></div>'; }
   function errorCard() { return '<div class="card"><h3>' + esc(S.common.errorTitle) + '</h3><p class="muted">' + esc(S.common.errorBody) + '</p><button class="btn navy" data-act="retry">' + esc(S.common.tryAgain) + '</button></div>'; }
   function pageHead(title, sub, tools) { return '<div class="page-head"><div><h2>' + esc(title) + '</h2>' + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div>' + (tools ? '<div class="tools">' + tools + '</div>' : '') + '</div>'; }
+  function sectionHead(t) { return '<h3 class="section">' + esc(t) + '</h3>'; }
   function yearSelect(years, current) {
     if (!years || years.length < 2) return '';
     return '<label class="sr" for="year-select">' + esc(S.common.yearLabel) + '</label><select id="year-select" data-act="year">' + years.map(function (y) { return '<option value="' + y.startYear + '"' + (y.startYear === current.startYear ? ' selected' : '') + '>' + esc(S.common.academicYear(y.label)) + '</option>'; }).join('') + '</select>';
   }
-  function reasonBlocks(days, oneLabel, manyLabel) {
-    var groups = DIL.reasonGroups(days.filter(function (d) { return d.status !== 'withdrawn'; }));
-    if (!groups.length) return '';
-    if (groups.length === 1) return '<div class="reason"><b>' + esc(oneLabel) + '</b>' + esc(groups[0].reason) + '</div>';
-    return groups.map(function (g) { return '<div class="reason"><b>' + esc(g.days.map(function (d) { return DIL.formatShort(d.date); }).join(', ')) + '</b>' + esc(g.reason) + '</div>'; }).join('');
-  }
-  function whyLabel() { return st.me && st.me.role === 'approver' ? S.decided.note : S.dash.noteFrom(st.me.cfg.principalName); }
+  function noteBlock(text, label) { return text ? '<div class="reason"><b>' + esc(label) + '</b>' + esc(text) + '</div>' : ''; }
+  function whyLabel() { return st.me && st.me.role === 'approver' ? S.decided.note : S.dash.noteFrom(who()); }
   function whyLine(d) { return d.status === 'declined' && d.decisionNote ? '<span class="why"><b>' + esc(whyLabel()) + '</b>' + esc(d.decisionNote) + '</span>' : ''; }
   function insteadLine(r) { return r.replaces && r.replaces.dates && r.replaces.dates.length ? '<p class="instead-line">' + esc(S.dash.insteadOf(r.replaces.dates)) + '</p>' : ''; }
   function dayRow(d, right, noChip) { return '<li><span class="d">' + esc(DIL.formatLong(d.date)) + '</span><span class="p">' + esc(S.portion[d.portion]) + '</span><span class="grow"></span>' + (noChip ? '' : (right || dayChip(d))) + whyLine(d) + '</li>'; }
   // The card's chip is the umbrella; a row gets its own chip only when at least one row would differ from it (partly approved, a taken day, a cancelled day).
   function dayRows(r) { var differ = r.days.some(function (d) { return (d.status === 'approved' && d.date < st.me.today ? 'taken' : d.status) !== r.status; }); return '<ul class="rows">' + r.days.map(function (d) { return dayRow(d, null, !differ); }).join('') + '</ul>'; }
+  function stepper(id, value, min, max, lessLabel, moreLabel, actLess, actMore, data) {
+    return '<div class="stepper" id="' + esc(id) + '"><button type="button" class="st-btn" data-act="' + actLess + '"' + data + (value <= min ? ' disabled' : '') + ' aria-label="' + esc(lessLabel) + '">−</button><span class="st-val" aria-live="polite">' + esc(DIL.formatDays(value)) + '</span><button type="button" class="st-btn" data-act="' + actMore + '"' + data + (value >= max ? ' disabled' : '') + ' aria-label="' + esc(moreLabel) + '">+</button></div>';
+  }
 
   /* ---------- shell ---------- */
   function navTabs() {
     var me = st.me, tabs = [];
     if (me.role === 'approver') { tabs.push(['queue', S.nav.approver.queue, true], ['decided', S.nav.approver.decided], ['overview', S.nav.approver.overview], ['staff', S.nav.approver.staff], ['dashboard', S.nav.approver.mine]); }
-    else { tabs.push(['dashboard', S.nav.staff.dashboard], ['new', S.nav.staff.newRequest]); }
+    else { tabs.push(['dashboard', S.nav.staff.dashboard], ['claim', S.nav.staff.claim], ['book', S.nav.staff.book]); }
     return '<nav class="nav"><div class="wrap">' + tabs.map(function (t) { return '<button class="tab" data-tab="' + t[0] + '">' + esc(t[1]) + (t[2] ? '<span class="badge" id="badge"' + (st.badge ? '' : ' hidden') + '>' + esc(S.nav.queueBadge(st.badge)) + '</span>' : '') + '</button>'; }).join('') + '</div></nav>';
   }
   function shell() {
@@ -73,15 +74,20 @@ var DILApp = (function () {
       (me && me.role !== 'unknown' && me.email && !me.removed && !me.needName ? navTabs() : '') + '<main><div class="wrap" id="main"></div></main>';
   }
   function setBadge(n) { st.badge = n; var b = $('#badge'); if (b) { b.textContent = S.nav.queueBadge(n); b.hidden = !n; } }
+  function unsaved(tab) {
+    if (st.tab === 'book' && tab !== 'book' && st.nr && !st.nr.sent && Object.keys(st.nr.picked).length && !st.nr.leaveOK) return S.newReq.leaveConfirm;
+    if (st.tab === 'claim' && tab !== 'claim' && st.cl && !st.cl.sent && (st.cl.reason.trim() || st.cl.dateText.trim()) && !st.cl.leaveOK) return S.claim.leaveConfirm;
+    return '';
+  }
   function go(tab) {
-    if (st.tab === 'new' && tab !== 'new' && st.nr && !st.nr.sent && Object.keys(st.nr.picked).length && !st.nr.leaveOK) { showLeaveBar(tab); return; }
+    var warn = unsaved(tab); if (warn) { showLeaveBar(tab, warn); return; }
     st.tab = tab; $$('.tab').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === tab); });
     var m = $('#main'); m.innerHTML = loading(); window.scrollTo(0, 0);
-    ({ dashboard: renderDashboard, 'new': renderNew, queue: renderQueue, decided: renderDecided, overview: renderOverview, staff: renderStaff })[tab]();
+    ({ dashboard: renderDashboard, claim: renderClaim, book: renderNew, queue: renderQueue, decided: renderDecided, overview: renderOverview, staff: renderStaff })[tab]();
   }
-  function showLeaveBar(tab) {
+  function showLeaveBar(tab, text) {
     var m = $('#main'); var old = $('.leave-bar', m); if (old) old.remove();
-    m.insertAdjacentHTML('afterbegin', '<div class="confirm leave-bar"><span>' + esc(S.newReq.leaveConfirm) + '</span><button class="btn danger sm" data-act="leave" data-to="' + tab + '">' + esc(S.common.leave) + '</button><button class="btn sm" data-act="stay">' + esc(S.common.stay) + '</button></div>');
+    m.insertAdjacentHTML('afterbegin', '<div class="confirm leave-bar"><span>' + esc(text) + '</span><button class="btn danger sm" data-act="leave" data-to="' + tab + '">' + esc(S.common.leave) + '</button><button class="btn sm" data-act="stay">' + esc(S.common.stay) + '</button></div>');
     window.scrollTo(0, 0);
   }
 
@@ -90,7 +96,6 @@ var DILApp = (function () {
     var me = st.me, m = $('#main');
     if (!me.email) { m.innerHTML = '<div class="card door"><h2>' + esc(S.doors.signedOut.title) + '</h2><p>' + esc(S.doors.signedOut.body) + '</p><a class="btn primary" href="' + esc(me.appUrl || '#') + '" target="_top">' + esc(S.doors.signedOut.button) + '</a></div>'; return; }
     if (me.removed || me.role === 'unknown') { var R = S.doors.removed; m.innerHTML = '<div class="card door"><h2>' + esc(R.title) + '</h2><p>' + esc(R.body(me.email)) + '</p><p id="door-msg">' + esc(R.hint) + '</p><p class="small" style="margin-top:18px">' + esc(R.wrongAccount) + '</p></div>'; return; }
-    // the sign-in gave no name: ask once, then in
     var N = S.doors.needName;
     m.innerHTML = '<div class="card door"><h2>' + esc(N.title) + '</h2><p>' + esc(N.body(me.email)) + '</p><label class="f" for="door-name">' + esc(N.nameLabel) + '</label><input type="text" id="door-name" placeholder="' + esc(N.namePlaceholder) + '" autocomplete="name"><div class="help bad" id="door-err"></div><button class="btn primary lg" data-act="door-name">' + esc(N.button) + '</button></div>';
     $('#door-name').focus();
@@ -101,7 +106,6 @@ var DILApp = (function () {
     err.textContent = ''; busy(btn, S.common.saving);
     call('setMyName', name).then(function (r) { if (!r.ok) throw 0; st.me.name = r.name; st.me.needName = false; go(st.me.role === 'approver' ? 'queue' : 'dashboard'); }).catch(function () { unbusy(btn); serverFailed(); });
   }
-  // My days: the name the sign-in gave (often initial + surname on a staff account) with a one-line way to tidy it
   function nameLine() {
     return '<p class="muted small name-line" id="name-line" style="margin:-8px 0 16px">' + esc(S.dash.shownAs(st.me.name)) + ' <button class="linkish" data-act="name-edit">' + esc(S.dash.changeName) + '</button></p>';
   }
@@ -117,33 +121,52 @@ var DILApp = (function () {
     call('setMyName', name).then(function (r) { if (!r.ok) throw 0; st.me.name = r.name; toast(S.dash.nameSaved); go(st.tab); }).catch(function () { unbusy(btn); serverFailed(); });
   }
 
-  /* ---------- staff dashboard ---------- */
+  /* ---------- My days (staff home): the two doors, the balance, claims, bookings ---------- */
   function renderDashboard() {
     var m = $('#main');
     call('myDays', st.years.dashboard || null).then(function (r) {
       if (st.tab !== 'dashboard') return;
       st.dash = r; st.years.dashboard = r.year.startYear;
-      var cur = r.year.startYear === st.me.year.startYear, s = r.summary;
-      var tools = yearSelect(r.years, r.year) + (cur && st.me.role !== 'approver' ? '<button class="btn primary" data-act="tab" data-tab="new">' + esc(S.dash.newRequest) + '</button>' : '');
-      var h = pageHead(S.nav.staff.dashboard, S.dash.role(st.me.role === 'approver' ? S.dash.roleApprover : S.dash.roleStaff, r.year.label), tools);
+      var cur = r.year.startYear === st.me.year.startYear, s = r.summary, b = r.balance, D = S.dash, T = D.tiles;
+      var h = pageHead(S.nav.staff.dashboard, D.role(st.me.role === 'approver' ? D.roleApprover : D.roleStaff, r.year.label), yearSelect(r.years, r.year));
       if (!cur) h += '<p class="muted small" style="margin:-8px 0 16px">' + esc(S.common.previousYear) + '</p>';
       h += nameLine();
-      h += '<div class="tiles">' + tile('ok', s.approved, S.dash.tiles.approved, S.dash.tiles.approvedSub) + tile('taken', s.taken, S.dash.tiles.taken, S.dash.tiles.takenSub) + tile('navy', s.remaining, S.dash.tiles.remaining, S.dash.tiles.remainingSub) + tile('wait', s.pending, S.dash.tiles.pending, S.dash.tiles.pendingSub) + '</div>';
-      h += '<div class="card"><h3>' + esc(S.dash.upcoming) + '</h3>' + (s.upcoming.length ? '<ul class="rows">' + s.upcoming.map(function (d) {
-        var right = dayChip(d) + (d.date === st.me.today ? ' <span class="chip">' + esc(S.dash.todayTag) + '</span>' : '') + (DIL.canCancelDay(d, st.me.today) ? ' <button class="btn quiet sm" data-act="cancel-ask" data-day="' + esc(d.dayId) + '">' + esc(S.dash.cancelDay) + '</button>' : '');
+      if (cur && st.me.role !== 'approver') h += doors(b);
+      var bookingsPending = r.requests.filter(function (x) { return x.status === 'pending'; }).length;
+      h += '<div class="tiles">' + tile('ok', b.approved, T.approved, T.approvedSub(b.claimsApproved)) + tile('navy', b.booked, T.booked, T.bookedSub(b.taken)) + tile('gold', b.left, T.left, T.leftSub) + tile('wait', b.pending + b.claimsPendingAmount, T.pending, T.pendingSub(b.claimsPending, bookingsPending)) + '</div>';
+      h += '<div class="card"><h3>' + esc(D.upcoming) + '</h3>' + (s.upcoming.length ? '<ul class="rows">' + s.upcoming.map(function (d) {
+        var right = dayChip(d) + (d.date === st.me.today ? ' <span class="chip">' + esc(D.todayTag) + '</span>' : '') + (DIL.canCancelDay(d, st.me.today) ? ' <button class="btn quiet sm" data-act="cancel-ask" data-day="' + esc(d.dayId) + '">' + esc(D.cancelDay) + '</button>' : '');
         return '<li data-day="' + esc(d.dayId) + '"><span class="d">' + esc(DIL.formatFull(d.date)) + '</span><span class="p">' + esc(S.portion[d.portion]) + '</span><span class="grow"></span>' + right + '</li>';
-      }).join('') + '</ul>' : '<p class="empty">' + esc(S.dash.upcomingEmpty) + '</p>') + '</div>';
-      h += '<h3 style="margin:26px 0 12px;font-family:var(--display);font-size:22px;font-variation-settings:\'opsz\' 40">' + esc(S.dash.requests) + '</h3>';
-      h += r.requests.length ? r.requests.map(staffRequestCard).join('') : '<p class="empty">' + esc(cur ? S.dash.requestsEmpty : S.dash.requestsEmptyPast) + '</p>';
+      }).join('') + '</ul>' : '<p class="empty">' + esc(D.upcomingEmpty) + '</p>') + '</div>';
+      h += sectionHead(D.claims);
+      h += r.claims.length ? r.claims.map(staffClaimCard).join('') : '<p class="empty">' + esc(cur ? D.claimsEmpty : D.claimsEmptyPast) + '</p>';
+      h += sectionHead(D.bookings);
+      h += r.requests.length ? r.requests.map(staffRequestCard).join('') : '<p class="empty">' + esc(cur ? D.bookingsEmpty : D.bookingsEmptyPast) + '</p>';
       m.innerHTML = h;
     }).catch(function () { if (st.tab === 'dashboard') m.innerHTML = errorCard(); });
   }
   function tile(cls, n, label, sub) { return '<div class="tile ' + cls + '"><div class="n">' + esc(num(n)) + '</div><div class="l">' + esc(label) + '</div><div class="s">' + esc(sub) + '</div></div>'; }
+  function doors(b) {
+    var C = S.dash.doors.claim, B = S.dash.doors.book, w = who();
+    var h = '<div class="doors"><div class="card door-card"><div class="eyebrow">' + esc(C.eyebrow) + '</div><h3>' + esc(C.title) + '</h3><p>' + esc(C.body(w)) + '</p><div class="foot"><button class="btn primary lg" data-act="tab" data-tab="claim">' + esc(C.button) + '</button></div></div>';
+    h += '<div class="card door-card' + (b.left > 0 ? '' : ' shut') + '"><div class="eyebrow">' + esc(B.eyebrow) + '</div><h3>' + esc(B.title) + '</h3><p>' + esc(B.body(w)) + '</p>';
+    if (b.left > 0) h += '<div class="foot"><span class="left-line">' + esc(B.left(b.left)) + '</span><button class="btn navy lg" data-act="tab" data-tab="book">' + esc(B.button) + '</button></div>';
+    else h += '<div class="foot"><span class="state-line">' + esc(b.claimsPending ? B.waiting(b.claimsPending, b.claimsPendingAmount) : b.claimsApproved ? B.allBooked : B.none) + '</span></div>';
+    return h + '</div></div>';
+  }
+  function staffClaimCard(c) {
+    var h = '<div class="card req claim" data-id="' + esc(c.claimId) + '"><div class="top"><span class="t">' + esc(c.reason) + '</span>' + claimChip(c) + '</div>';
+    h += '<p class="meta">' + esc(S.dash.claimMeta(c)) + '</p>';
+    if (c.decisionNote) h += '<div class="note"><b>' + esc(S.dash.noteFrom(who())) + '</b>' + esc(c.decisionNote) + '</div>';
+    if (c.decidedAt) h += '<p class="muted small" style="margin:8px 0 0">' + esc(S.dash.decidedOn(c.decidedAt)) + '</p>';
+    if (DIL.canWithdrawClaim(c)) h += '<div class="actions"><button class="btn sm" data-act="withdraw-claim-ask">' + esc(S.dash.withdrawClaim) + '</button></div>';
+    return h + '</div>';
+  }
   function staffRequestCard(r) {
     var h = '<div class="card req" data-id="' + esc(r.id) + '"><div class="top"><span class="t">' + esc(S.dash.requestLine(r.total, r.submittedAt)) + '</span>' + chip(r.status) + '</div>' + insteadLine(r);
     h += dayRows(r);
-    h += reasonBlocks(r.days, S.dash.reason, S.dash.reasons);
-    if (r.decisionNote) h += '<div class="note"><b>' + esc(S.dash.noteFrom(st.me.cfg.principalName)) + '</b>' + esc(r.decisionNote) + '</div>';
+    h += noteBlock(r.sharedReason, S.dash.note);
+    if (r.decisionNote) h += '<div class="note"><b>' + esc(S.dash.noteFrom(who())) + '</b>' + esc(r.decisionNote) + '</div>';
     if (r.decidedAt) h += '<p class="muted small" style="margin:8px 0 0">' + esc(S.dash.decidedOn(r.decidedAt)) + '</p>';
     var acts = '';
     if (DIL.canWithdraw(r.days)) acts += '<button class="btn sm" data-act="withdraw-ask">' + esc(S.dash.withdraw) + '</button>';
@@ -151,54 +174,114 @@ var DILApp = (function () {
     if (acts) h += '<div class="actions">' + acts + '</div>';
     return h + '</div>';
   }
-  // "Ask for a different day instead": opens a new request carrying the reason and a link to the declined day(s).
+  // "Book a different day instead": opens a booking carrying the note and a link to the declined day(s).
   function askInstead(btn) {
     var r = ((st.dash && st.dash.requests) || []).filter(function (x) { return x.id === btn.dataset.id; })[0]; if (!r) return;
     var declined = r.days.filter(function (d) { return d.status === 'declined'; });
-    st.nrPreset = { reason: (declined[0] && declined[0].reason) || r.sharedReason || '', replaces: { id: r.id, dates: declined.map(function (d) { return d.date; }) } };
-    st.nr = null; go('new');
+    st.nrPreset = { reason: r.sharedReason || '', replaces: { id: r.id, dates: declined.map(function (d) { return d.date; }) } };
+    st.nr = null; go('book');
   }
-  function askWithdraw(btn) {
-    var card = btn.closest('.req'); var a = $('.actions', card);
-    a.innerHTML = '<div class="confirm" style="margin-top:0;flex:1"><span>' + esc(S.dash.withdrawConfirm) + '</span><button class="btn danger sm" data-act="withdraw-yes">' + esc(S.dash.withdrawYes) + '</button><button class="btn sm" data-act="withdraw-no">' + esc(S.common.keep) + '</button></div>';
+  function askWithdraw(btn, claim) {
+    var card = btn.closest('.req'); var a = $('.actions', card), D = S.dash;
+    a.innerHTML = '<div class="confirm" style="margin-top:0;flex:1"><span>' + esc(claim ? D.withdrawClaimConfirm(who()) : D.withdrawConfirm(who())) + '</span><button class="btn danger sm" data-act="' + (claim ? 'withdraw-claim-yes' : 'withdraw-yes') + '">' + esc(claim ? D.withdrawClaimYes : D.withdrawYes) + '</button><button class="btn sm" data-act="withdraw-no">' + esc(S.common.keep) + '</button></div>';
   }
   function doWithdraw(btn) {
     var card = btn.closest('.req'), id = card.dataset.id; busy(btn, S.common.sendingEmail);
-    call('withdraw', id).then(function (r) { if (!r.ok) { if (r.code === 'not_pending') { toast(S.dash.decidedMeanwhile); renderDashboard(); return; } throw 0; } toast(S.dash.withdrawn); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
+    call('withdraw', id).then(function (r) { if (!r.ok) { if (r.code === 'not_pending') { toast(S.dash.decidedMeanwhile(who())); renderDashboard(); return; } throw 0; } toast(S.dash.withdrawn); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
+  }
+  function doWithdrawClaim(btn) {
+    var card = btn.closest('.req'), id = card.dataset.id; busy(btn, S.common.sendingEmail);
+    call('withdrawClaim', id).then(function (r) { if (!r.ok) { if (r.code === 'not_pending') { toast(S.dash.claimDecidedMeanwhile(who())); renderDashboard(); return; } throw 0; } toast(S.dash.claimWithdrawn); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
   }
   function askCancel(btn) {
     var li = btn.closest('li'), d = st.dash.summary.upcoming.filter(function (x) { return x.dayId === li.dataset.day; })[0];
-    li.insertAdjacentHTML('beforeend', '<div class="confirm" style="flex-basis:100%"><span>' + esc(S.dash.cancelConfirm(d.date)) + '</span><button class="btn danger sm" data-act="cancel-yes" data-day="' + esc(d.dayId) + '">' + esc(S.dash.cancelYes) + '</button><button class="btn sm" data-act="cancel-no">' + esc(S.dash.cancelNo) + '</button></div>');
+    li.insertAdjacentHTML('beforeend', '<div class="confirm" style="flex-basis:100%"><span>' + esc(S.dash.cancelConfirm(d.date, who())) + '</span><button class="btn danger sm" data-act="cancel-yes" data-day="' + esc(d.dayId) + '">' + esc(S.dash.cancelYes) + '</button><button class="btn sm" data-act="cancel-no">' + esc(S.dash.cancelNo) + '</button></div>');
     btn.remove();
   }
   function doCancel(btn) {
     var d = st.dash.summary.upcoming.filter(function (x) { return x.dayId === btn.dataset.day; })[0]; busy(btn, S.common.sendingEmail);
-    call('cancelDay', d.dayId).then(function (r) { if (!r.ok) { if (r.code === 'not_allowed') { toast(S.dash.changedMeanwhile); renderDashboard(); return; } throw 0; } toast(S.dash.cancelled(d.date)); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
+    call('cancelDay', d.dayId).then(function (r) { if (!r.ok) { if (r.code === 'not_allowed') { toast(S.dash.changedMeanwhile(who())); renderDashboard(); return; } throw 0; } toast(S.dash.cancelled(d.date)); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
   }
 
-  /* ---------- new request ---------- */
+  /* ---------- Claim days (staff) ---------- */
+  function renderClaim() {
+    var m = $('#main'), C = S.claim, year = st.me.year, quick = (st.me.cfg && st.me.cfg.quickReasons) || [];
+    st.cl = { reason: '', dateText: '', dateISO: null, amount: 1, sent: false, msg: '' };
+    var h = pageHead(C.title, C.sub(year.label, who())) + '<div class="two"><div>';
+    h += '<div class="card"><div class="step">' + esc(C.step1) + '</div><label class="f" for="cl-reason">' + esc(C.reasonLabel) + '</label><textarea id="cl-reason" data-act="cl-reason" placeholder="' + esc(C.reasonPlaceholder) + '"></textarea>' +
+      (quick.length ? '<div class="chips"><span class="lbl">' + esc(C.quickFill) + '</span>' + quick.map(function (q) { return '<button type="button" data-act="cl-quick" data-q="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>' : '') + '</div>';
+    h += '<div class="card"><div class="step">' + esc(C.step2) + '</div><label class="f" for="cl-date">' + esc(C.dateLabel) + '</label><input type="text" id="cl-date" data-act="cl-date" placeholder="' + esc(C.datePlaceholder) + '" autocomplete="off" style="max-width:320px"><div class="help" id="cl-date-help">' + esc(C.dateHelp(year.label)) + '</div></div>';
+    h += '<div class="card"><div class="step">' + esc(C.step3) + '</div><label class="f">' + esc(C.amountLabel) + '</label>' + stepper('cl-stepper', st.cl.amount, 0.5, DIL.CLAIM_MAX, C.less, C.more, 'cl-less', 'cl-more', '') + '<div class="help">' + esc(C.amountHelp) + '</div></div>';
+    h += '</div><div class="sticky"><div class="card summary"><div class="step">' + esc(C.summaryTitle) + '</div><div id="cl-summary"></div></div></div></div>';
+    m.innerHTML = h; drawClaimSummary(); $('#cl-reason').focus();
+  }
+  function drawClaimSummary() {
+    var c = st.cl, box = $('#cl-summary'), C = S.claim; if (!box || c.sent) return;
+    var h = '<div class="total">' + esc(C.total(c.amount)) + '</div>';
+    if (c.reason.trim() || c.dateISO) h += '<div class="reason"><b>' + esc(C.summaryWhat) + '</b>' + (c.reason.trim() ? esc(c.reason.trim()) : '<span class="muted">—</span>') + '</div><div class="reason"><b>' + esc(C.summaryWhen) + '</b>' + (c.dateISO ? esc(DIL.formatFull(c.dateISO)) : '<span class="muted">—</span>') + '</div>';
+    else h += '<p class="empty">' + esc(C.summaryEmpty) + '</p>';
+    h += '<p style="margin:16px 0 0"><button class="btn primary lg" data-act="cl-send" style="width:100%;justify-content:center">' + esc(C.send(who())) + '</button></p><div class="inline-msg bad" id="cl-msg">' + esc(c.msg || '') + '</div>';
+    box.innerHTML = h;
+  }
+  function setClaimMsg(t) { st.cl.msg = t; var el = $('#cl-msg'); if (el) el.textContent = t; }
+  function claimDateInput(text) {
+    var c = st.cl, help = $('#cl-date-help'); c.dateText = text;
+    var iso = text.trim() ? DIL.parseClaimDate(text, { todayISO: st.me.today, year: st.me.year }) : null;
+    c.dateISO = iso;
+    if (!text.trim()) { help.className = 'help'; help.textContent = S.claim.dateHelp(st.me.year.label); }
+    else if (!iso) { help.className = 'help bad'; help.textContent = S.claimProblem.bad_date; }
+    else if (!DIL.inYear(iso, st.me.year)) { help.className = 'help bad'; help.textContent = S.claimProblem.date_outside_year({ year: st.me.year.label }); c.dateISO = null; }
+    else { help.className = 'help good'; help.textContent = S.claim.dateIs(iso); if (c.msg && c.msg !== S.claimProblem.no_reason) setClaimMsg(''); }
+    drawClaimSummary();
+  }
+  function claimStep(delta) {
+    var c = st.cl, next = Math.round((c.amount + delta) * 2) / 2; if (next < 0.5 || next > DIL.CLAIM_MAX) return;
+    c.amount = next; $('#cl-stepper').outerHTML = stepper('cl-stepper', c.amount, 0.5, DIL.CLAIM_MAX, S.claim.less, S.claim.more, 'cl-less', 'cl-more', ''); drawClaimSummary();
+  }
+  function sendClaim(btn) {
+    var c = st.cl;
+    if (!c.reason.trim()) { setClaimMsg(S.claim.needReason); $('#cl-reason').focus(); return; }
+    if (!c.dateISO) { setClaimMsg(c.dateText.trim() ? S.claimProblem.describe({ code: 'bad_date' }) : S.claim.needDate); $('#cl-date').focus(); return; }
+    var sub = { reason: c.reason.trim(), workDate: c.dateISO, amount: c.amount };
+    var v = DIL.validateClaim(sub, { todayISO: st.me.today, year: st.me.year });
+    if (!v.ok) { setClaimMsg(S.claimProblem.describe(v)); return; }
+    setClaimMsg(''); busy(btn, S.claim.sending);
+    call('submitClaim', sub).then(function (r) {
+      if (!r.ok) { unbusy(btn); setClaimMsg(S.claimProblem.describe(r)); return; }
+      c.sent = true; c.leaveOK = true;
+      $('#main').innerHTML = pageHead(S.claim.title, S.claim.sub(st.me.year.label, who())) + '<div class="done-line">✓ ' + esc(S.claim.sentTitle) + '</div><div class="card" style="margin-top:16px"><p style="margin:0 0 14px">' + esc(S.claim.sentBody(who())) + '</p>' + staffClaimCard(r.claim) + '<p style="margin:18px 0 0"><button class="btn navy" data-act="tab" data-tab="dashboard">' + esc(S.claim.backToDays) + '</button></p></div>';
+      window.scrollTo(0, 0);
+    }).catch(function () { unbusy(btn); serverFailed(); });
+  }
+
+  /* ---------- Book a day off (staff) ---------- */
   function renderNew() {
     var m = $('#main');
     call('myDays', null).then(function (r) {
-      if (st.tab !== 'new') return;
-      var win = st.me.window, t = DIL.parts(st.me.today);
-      st.nr = { data: r, months: DIL.monthRange(win.start, win.end), mi: 0, picked: {}, reason: '', perDay: false, sent: false, msg: '', replaces: null };
+      if (st.tab !== 'book') return;
+      var win = st.me.window, t = DIL.parts(st.me.today), b = r.balance, N = S.newReq;
+      if (!(b.left > 0)) {
+        st.nr = null; st.nrPreset = null;
+        m.innerHTML = pageHead(N.title, N.sub(0, win.year.label)) + '<div class="card nothing"><h3>' + esc(N.nothing.title) + '</h3><p>' + esc(b.claimsPending ? N.nothing.waiting(b.claimsPending, b.claimsPendingAmount, who()) : b.claimsApproved ? N.nothing.allBooked : N.nothing.none) + '</p><p style="margin:14px 0 0"><button class="btn primary lg" data-act="tab" data-tab="claim">' + esc(N.nothing.button) + '</button></p></div>';
+        return;
+      }
+      st.nr = { data: r, left: b.left, months: DIL.monthRange(win.start, win.end), mi: 0, picked: {}, reason: '', sent: false, msg: '', replaces: null };
       if (st.nrPreset) { st.nr.reason = st.nrPreset.reason || ''; st.nr.replaces = st.nrPreset.replaces || null; st.nrPreset = null; }
       st.nr.months.forEach(function (mm, i) { if (mm.y === t.y && mm.m === t.m) st.nr.mi = i; });
-      m.innerHTML = pageHead(S.newReq.title, S.newReq.sub(win.year.label)) + '<div class="two"><div>' +
-        '<div class="card"><div class="step">' + esc(S.newReq.step1) + '</div><p class="muted small" style="margin:0 0 6px">' + esc(S.newReq.step1help) + '</p><div id="instead"></div><div id="cal"></div>' +
-        '<label class="f" for="typed">' + esc(S.newReq.typedLabel) + '</label><div class="typed"><input type="text" id="typed" placeholder="' + esc(S.newReq.typedPlaceholder) + '" autocomplete="off"><button class="btn" data-act="typed-add">' + esc(S.newReq.typedAdd) + '</button></div><div class="help" id="typed-help"></div></div>' +
-        '<div class="card"><h3>' + esc(S.newReq.picked) + '</h3><div id="picked"></div></div>' +
-        '<div class="card"><div class="step">' + esc(S.newReq.step2) + '</div><div id="reason"></div></div>' +
-        '</div><div class="sticky"><div class="card summary"><div class="step">' + esc(S.newReq.step3) + '</div><div id="summary"></div></div></div></div>';
-      drawInstead(); drawCalendar(); drawPicked(); drawReason(); drawSummary();
-    }).catch(function () { if (st.tab === 'new') m.innerHTML = errorCard(); });
+      m.innerHTML = pageHead(N.title, N.sub(b.left, win.year.label)) + '<div class="two"><div>' +
+        '<div class="card"><div class="step">' + esc(N.step1) + '</div><p class="muted small" style="margin:0 0 6px">' + esc(N.step1help) + '</p><div id="instead"></div><div id="cal"></div>' +
+        '<label class="f" for="typed">' + esc(N.typedLabel) + '</label><div class="typed"><input type="text" id="typed" placeholder="' + esc(N.typedPlaceholder) + '" autocomplete="off"><button class="btn" data-act="typed-add">' + esc(N.typedAdd) + '</button></div><div class="help" id="typed-help"></div></div>' +
+        '<div class="card"><h3>' + esc(N.picked) + '</h3><div id="picked"></div></div>' +
+        '<div class="card"><div class="step">' + esc(N.step2(who())) + '</div><label class="f" for="reason-box">' + esc(N.noteLabel(who())) + '</label><textarea id="reason-box" data-act="reason" placeholder="' + esc(N.notePlaceholder) + '">' + esc(st.nr.reason) + '</textarea></div>' +
+        '</div><div class="sticky"><div class="card summary"><div class="step">' + esc(N.step3) + '</div><div id="summary"></div></div></div></div>';
+      drawInstead(); drawCalendar(); drawPicked(); drawSummary();
+    }).catch(function () { if (st.tab === 'book') m.innerHTML = errorCard(); });
   }
   function drawInstead() {
     var n = st.nr, el = $('#instead'); if (!el) return;
     el.innerHTML = n.replaces ? '<div class="instead"><span>' + esc(S.dash.insteadOf(n.replaces.dates)) + '</span><button type="button" class="link" data-act="drop-instead">' + esc(S.newReq.insteadDrop) + '</button></div>' : '';
   }
-  function nrCtx() { var n = st.nr; return { todayISO: st.me.today, window: st.me.window, closures: n.data.closures, existing: n.data.existing, picked: [] }; }
+  function nrCtx() { var n = st.nr, bal = {}; bal[st.me.window.year.startYear] = n.left; return { todayISO: st.me.today, window: st.me.window, closures: n.data.closures, existing: n.data.existing, picked: [], balance: bal }; }
   function drawCalendar() {
     var n = st.nr, mm = n.months[n.mi], g = DIL.monthGrid(mm.y, mm.m, nrCtx()), L = S.newReq.calendarLegend;
     var h = '<div class="cal-head"><button class="btn quiet sm" data-act="cal-prev"' + (n.mi === 0 ? ' disabled' : '') + ' aria-label="' + esc(S.newReq.prevMonth) + '">←</button><b>' + esc(g.label) + '</b><button class="btn quiet sm" data-act="cal-next"' + (n.mi === n.months.length - 1 ? ' disabled' : '') + ' aria-label="' + esc(S.newReq.nextMonth) + '">→</button></div><div class="cal">';
@@ -215,49 +298,47 @@ var DILApp = (function () {
     $('#cal').innerHTML = h;
   }
   function pickedList() { return Object.keys(st.nr.picked).sort(); }
-  function addDay(iso) {
-    var n = st.nr; n.picked[iso] = { portion: 'full', reason: n.perDay ? n.reason : '' };
-    var p = DIL.parts(iso); n.months.forEach(function (mm, i) { if (mm.y === p.y && mm.m === p.m) n.mi = i; });
-    n.msg = ''; drawCalendar(); drawPicked(); drawReason(); drawSummary();
+  function pickedTotal(extraIso, portionOverride) {
+    var n = st.nr, list = pickedList().map(function (iso) { return { portion: portionOverride && portionOverride.iso === iso ? portionOverride.p : n.picked[iso].portion }; });
+    if (extraIso) list.push({ portion: 'full' });
+    return DIL.total(list);
   }
-  function removeDay(iso) { delete st.nr.picked[iso]; drawCalendar(); drawPicked(); drawReason(); drawSummary(); }
+  // The cap: a booking can never go above the days left to book (the server refuses it too, code over_balance).
+  function overCap(total) { return total > st.nr.left; }
+  function addDay(iso) {
+    var n = st.nr; n.picked[iso] = { portion: 'full' };
+    var p = DIL.parts(iso); n.months.forEach(function (mm, i) { if (mm.y === p.y && mm.m === p.m) n.mi = i; });
+    n.msg = ''; drawCalendar(); drawPicked(); drawSummary();
+  }
+  function removeDay(iso) { delete st.nr.picked[iso]; drawCalendar(); drawPicked(); drawSummary(); }
   function drawPicked() {
     var n = st.nr, list = pickedList();
-    if (!list.length) { $('#picked').innerHTML = '<p class="empty">' + esc(S.newReq.pickedEmpty) + '</p>'; return; }
+    if (!list.length) { $('#picked').innerHTML = '<p class="empty">' + esc(S.newReq.pickedEmpty) + '</p><div class="help bad" id="picked-help"></div>'; return; }
     var h = '<ul class="rows picked-list">' + list.map(function (iso) {
       var pk = n.picked[iso];
       return '<li data-iso="' + iso + '"><span class="d">' + esc(DIL.formatLong(iso)) + '</span><span class="seg">' + DIL.PORTIONS.map(function (p) { return '<button type="button" class="' + (pk.portion === p ? 'on' : '') + '" data-act="portion" data-iso="' + iso + '" data-p="' + p + '">' + esc(S.portion[p]) + '</button>'; }).join('') + '</span><span class="grow"></span><button type="button" class="x" data-act="remove-day" data-iso="' + iso + '" aria-label="' + esc(S.newReq.removeDay(iso)) + '">×</button></li>';
     }).join('') + '</ul>';
-    var tot = DIL.total(list.map(function (iso) { return { portion: n.picked[iso].portion }; }));
-    h += '<div class="total">' + esc(S.newReq.total(tot)) + '</div>';
+    h += '<div class="total">' + esc(S.newReq.total(pickedTotal(), n.left)) + '</div><div class="help bad" id="picked-help"></div>';
     $('#picked').innerHTML = h;
   }
-  function drawReason() {
-    var n = st.nr, list = pickedList(), quick = (st.me.cfg && st.me.cfg.quickReasons) || [];
-    var h = '';
-    if (!n.perDay) {
-      h += '<label class="f" for="reason-box">' + esc(S.newReq.reasonLabel) + '</label><textarea id="reason-box" data-act="reason" placeholder="' + esc(S.newReq.reasonPlaceholder) + '">' + esc(n.reason) + '</textarea>';
-      if (list.length) h += '<div class="help">' + esc(S.newReq.reasonOneForAll(list.length)) + '</div>';
-    } else {
-      h += list.map(function (iso) { return '<label class="f" for="r-' + iso + '">' + esc(S.newReq.perDayLabel(iso)) + '</label><textarea id="r-' + iso + '" data-act="reason-day" data-iso="' + iso + '" placeholder="' + esc(S.newReq.reasonPlaceholder) + '">' + esc(n.picked[iso].reason) + '</textarea>'; }).join('');
-    }
-    if (quick.length) h += '<div class="chips"><span class="lbl">' + esc(S.newReq.quickFill) + '</span>' + quick.map(function (q) { return '<button type="button" data-act="quick" data-q="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>';
-    if (list.length > 1) h += '<p style="margin:14px 0 0"><button type="button" class="link" data-act="toggle-perday">' + esc(n.perDay ? S.newReq.sameReason : S.newReq.differentReason) + '</button></p>';
-    $('#reason').innerHTML = h;
+  function capMsg(el) { var m = S.newReq.overLeft(st.nr.left); if (el) { el.className = 'help bad'; el.textContent = m; } var ph = $('#picked-help'); if (ph && ph !== el) ph.textContent = m; }
+  function setPortion(btn) {
+    var iso = btn.dataset.iso, p = btn.dataset.p;
+    if (overCap(pickedTotal(null, { iso: iso, p: p }))) { capMsg($('#picked-help')); return; }
+    st.nr.picked[iso].portion = p; drawPicked(); drawCalendar(); drawSummary();
   }
   function drawSummary() {
     var n = st.nr, list = pickedList(), box = $('#summary'); if (!box) return;
     if (n.sent) return;
     if (!list.length) { box.innerHTML = '<p class="empty">' + esc(S.newReq.summaryEmpty) + '</p>' + sendButton() + msgLine(); return; }
-    var days = list.map(function (iso) { return { date: iso, portion: n.picked[iso].portion, reason: n.perDay ? n.picked[iso].reason : n.reason, status: 'pending' }; });
+    var days = list.map(function (iso) { return { date: iso, portion: n.picked[iso].portion, status: 'pending' }; });
     var h = '<ul class="rows">' + days.map(function (d) { return '<li><span class="d">' + esc(DIL.formatLong(d.date)) + '</span><span class="p">' + esc(S.portion[d.portion]) + '</span></li>'; }).join('') + '</ul>';
-    h += '<div class="total">' + esc(S.newReq.total(DIL.total(days))) + '</div>';
+    h += '<div class="total">' + esc(S.newReq.total(DIL.total(days), n.left)) + '</div>';
     if (n.replaces) h += '<p class="muted small" style="margin:8px 0 0">' + esc(S.dash.insteadOf(n.replaces.dates)) + '</p>';
-    var withReason = days.filter(function (d) { return String(d.reason || '').trim(); });
-    if (withReason.length) h += reasonBlocks(withReason, S.dash.reason, S.dash.reasons);
+    if (n.reason.trim()) h += noteBlock(n.reason.trim(), S.dash.note);
     box.innerHTML = h + sendButton() + msgLine();
   }
-  function sendButton() { return '<p style="margin:16px 0 0"><button class="btn primary lg" data-act="send" style="width:100%;justify-content:center">' + esc(S.newReq.send(st.me.cfg.principalName)) + '</button></p>'; }
+  function sendButton() { return '<p style="margin:16px 0 0"><button class="btn primary lg" data-act="send" style="width:100%;justify-content:center">' + esc(S.newReq.send(who())) + '</button></p>'; }
   function msgLine() { return '<div class="inline-msg bad" id="send-msg">' + esc(st.nr.msg || '') + '</div>'; }
   function setMsg(t) { st.nr.msg = t; var el = $('#send-msg'); if (el) el.textContent = t; }
   function typedAdd() {
@@ -266,6 +347,7 @@ var DILApp = (function () {
     if (!iso) { help.textContent = S.dateProblem.invalid; return; }
     var ctx = nrCtx(); ctx.picked = pickedList(); var p = DIL.dateProblem(iso, ctx);
     if (p) { help.textContent = S.dateProblem.describe(p); return; }
+    if (overCap(pickedTotal(iso))) { capMsg(help); return; }
     help.className = 'help'; help.textContent = ''; inp.value = ''; addDay(iso);
   }
   function calClick(btn) {
@@ -273,50 +355,125 @@ var DILApp = (function () {
     if (n.picked[iso]) { removeDay(iso); return; }
     var ctx = nrCtx(); var p = DIL.dateProblem(iso, ctx);
     if (p) { help.className = 'help bad'; help.textContent = S.dateProblem.describe(p); return; }
-    help.textContent = ''; addDay(iso);
+    if (overCap(pickedTotal(iso))) { capMsg(help); return; }
+    help.className = 'help'; help.textContent = ''; addDay(iso);
   }
   function send(btn) {
     var n = st.nr, list = pickedList();
     if (!list.length) return setMsg(S.newReq.needDays);
-    if (!n.perDay && !n.reason.trim()) return setMsg(S.newReq.needReason);
-    if (n.perDay && list.some(function (iso) { return !String(n.picked[iso].reason || '').trim(); })) return setMsg(S.newReq.needEveryReason);
-    var sub = { reason: n.perDay ? '' : n.reason.trim(), days: list.map(function (iso) { return { date: iso, portion: n.picked[iso].portion, reason: n.perDay ? n.picked[iso].reason.trim() : '' }; }) };
+    var sub = { reason: n.reason.trim(), days: list.map(function (iso) { return { date: iso, portion: n.picked[iso].portion }; }) };
     if (n.replaces) sub.replaces = n.replaces;
     var v = DIL.validateSubmission(sub, nrCtx());
-    if (!v.ok) return setMsg(S.dateProblem.describe(v.detail || { code: v.code }));
+    if (!v.ok) return setMsg(S.dateProblem.describe(v.detail || v));
     setMsg(''); busy(btn, S.newReq.sending);
     call('submit', sub).then(function (r) {
-      if (!r.ok) { unbusy(btn); setMsg(S.dateProblem.describe(r.detail || { code: r.code })); return; }
+      if (!r.ok) { unbusy(btn); setMsg(S.dateProblem.describe(r.detail || r)); return; }
       n.sent = true; n.leaveOK = true;
-      $('#main').innerHTML = pageHead(S.newReq.title, S.newReq.sub(st.me.window.year.label)) + '<div class="done-line">✓ ' + esc(S.newReq.sentTitle) + '</div><div class="card" style="margin-top:16px"><p style="margin:0 0 14px">' + esc(S.newReq.sentBody(st.me.cfg.principalName)) + '</p>' + staffRequestCard(r.request) + '<p style="margin:18px 0 0"><button class="btn navy" data-act="tab" data-tab="dashboard">' + esc(S.newReq.backToDays) + '</button></p></div>';
+      $('#main').innerHTML = pageHead(S.newReq.title, S.newReq.sub(r.balance ? r.balance.left : 0, st.me.window.year.label)) + '<div class="done-line">✓ ' + esc(S.newReq.sentTitle) + '</div><div class="card" style="margin-top:16px"><p style="margin:0 0 14px">' + esc(S.newReq.sentBody(who())) + '</p>' + staffRequestCard(r.request) + '<p style="margin:18px 0 0"><button class="btn navy" data-act="tab" data-tab="dashboard">' + esc(S.newReq.backToDays) + '</button></p></div>';
       window.scrollTo(0, 0);
     }).catch(function () { unbusy(btn); serverFailed(); });
   }
 
-  /* ---------- approver: queue ---------- */
+  /* ---------- approver: To decide (two views: claims, bookings) ---------- */
+  function viewSwitch(which, c, b, act) {
+    return '<div class="views" role="tablist"><button type="button" role="tab" class="' + (which === 'claims' ? 'on' : '') + '" data-act="' + act + '" data-v="claims" aria-selected="' + (which === 'claims') + '">' + esc(S.views.claims(c)) + '</button><button type="button" role="tab" class="' + (which === 'bookings' ? 'on' : '') + '" data-act="' + act + '" data-v="bookings" aria-selected="' + (which === 'bookings') + '">' + esc(S.views.bookings(b)) + '</button></div>';
+  }
   function renderQueue() {
     var m = $('#main');
     call('queue').then(function (r) {
       if (st.tab !== 'queue') return;
-      setBadge(r.count); st.q = {};
-      var h = pageHead(S.queue.title, S.queue.sub(r.count));
-      if (!r.requests.length) h += '<div class="card"><p class="empty">' + esc(S.queue.empty) + '</p></div>';
-      else h += r.requests.map(function (q) { st.q[q.id] = { req: q, choices: {}, why: '', own: {}, note: '' }; q.days.forEach(function (d) { st.q[q.id].choices[d.dayId] = 'approved'; }); return decideCard(q, false); }).join('');
+      setBadge(r.count); st.q = {}; st.c = {}; st.queue = r;
+      if (!st.qv) st.qv = r.claims.length || !r.requests.length ? 'claims' : 'bookings';
+      var V = S.views, h = pageHead(S.queue.title, V.sub(r.claims.length, r.requests.length));
+      h += viewSwitch(st.qv, r.claims.length, r.requests.length, 'view');
+      h += '<p class="muted small view-help">' + esc(st.qv === 'claims' ? V.helpClaims : V.helpBookings) + '</p>';
+      if (st.qv === 'claims') {
+        if (!r.claims.length) h += '<div class="card"><p class="empty">' + esc(V.emptyClaims) + '</p>' + (r.requests.length ? '<p><button type="button" class="link" data-act="view" data-v="bookings">' + esc(V.otherBookings(r.requests.length)) + '</button></p>' : '<p class="muted small">' + esc(V.emptyBoth) + '</p>') + '</div>';
+        else h += r.claims.map(function (k) { st.c[k.claimId] = { claim: k, approve: true, amount: k.amountClaimed, note: '' }; return claimCard(k, false); }).join('');
+      } else {
+        if (!r.requests.length) h += '<div class="card"><p class="empty">' + esc(V.emptyBookings) + '</p>' + (r.claims.length ? '<p><button type="button" class="link" data-act="view" data-v="claims">' + esc(V.otherClaims(r.claims.length)) + '</button></p>' : '<p class="muted small">' + esc(V.emptyBoth) + '</p>') + '</div>';
+        else h += r.requests.map(function (q) { st.q[q.id] = { req: q, choices: {}, why: '', own: {}, note: '' }; q.days.forEach(function (d) { st.q[q.id].choices[d.dayId] = 'approved'; }); return decideCard(q, false); }).join('');
+      }
       m.innerHTML = h;
     }).catch(function () { if (st.tab === 'queue') m.innerHTML = errorCard(); });
   }
+  function yearLine(first, b) { return b ? '<div class="yr">' + esc(S.queue.yearSoFar(first, b.approved, b.booked, b.pending, b.left)) + '</div>' : ''; }
+  // ----- a claim card -----
+  function claimCard(k, change) {
+    var cs = st.c[k.claimId], first = DIL.firstName(k.staffName), Q = S.claimQ;
+    var h = '<div class="card qcard ccard" data-id="' + esc(k.claimId) + '"><div class="top"><div><div class="name">' + esc(k.staffName) + '</div><div class="meta">' + esc(Q.claims(k.amountClaimed) + ' · ' + Q.sent(k.submittedAt)) + '</div></div>' + (change ? claimChip(k) : '') + '</div>';
+    h += '<div class="reason"><b>' + esc(Q.what) + '</b>' + esc(k.reason) + '</div><div class="reason when"><b>' + esc(Q.when) + '</b>' + esc(DIL.formatFull(k.workDate)) + '</div>';
+    h += yearLine(first, k.balance);
+    if (change) h += '<p class="inline-msg" style="color:#8A6A0C">' + esc(Q.changeWarning) + '</p>';
+    h += '<div class="cdecide" id="cd-' + esc(k.claimId) + '">' + claimDecision(k.claimId) + '</div>';
+    h += '<div class="foot"><button class="btn primary lg" data-act="cdecide" data-change="' + (change ? '1' : '') + '">' + esc(claimLabel(k.claimId, change)) + '</button>' + (change ? '<button type="button" class="link" data-act="ccancel-change">' + esc(Q.cancelChange) + '</button>' : '') + '<span class="inline-msg bad" id="cmsg-' + esc(k.claimId) + '"></span></div></div>';
+    return h;
+  }
+  function claimDecision(id) {
+    var cs = st.c[id], k = cs.claim, first = DIL.firstName(k.staffName), Q = S.claimQ, fewer = cs.approve && cs.amount < k.amountClaimed;
+    var h = '<div class="seg decide big"><button type="button" class="' + (cs.approve ? 'on ok' : '') + '" data-act="cchoose" data-c="approve">' + esc(Q.choose.approve) + '</button><button type="button" class="' + (cs.approve ? '' : 'on no') + '" data-act="cchoose" data-c="decline">' + esc(Q.choose.decline) + '</button></div>';
+    if (cs.approve) {
+      h += '<div class="amount-row"><label class="f">' + esc(Q.amountLabel) + '</label>' + stepper('cst-' + id, cs.amount, 0.5, k.amountClaimed, Q.less, Q.more, 'cless', 'cmore', '') + '<span class="of">' + esc(Q.of(k.amountClaimed)) + '</span></div>';
+      if (fewer) h += '<p class="fewer">' + esc(Q.fewerLine(cs.amount, k.amountClaimed)) + '</p>';
+    }
+    var label = !cs.approve ? Q.noteDecline(first) : fewer ? Q.noteFewer(first) : Q.noteLabel(first);
+    var ph = !cs.approve ? Q.notePlaceholderDecline : fewer ? Q.notePlaceholderFewer : Q.notePlaceholder;
+    h += '<label class="f" for="cnote-' + esc(id) + '">' + esc(label) + '</label><textarea id="cnote-' + esc(id) + '" data-act="cnote" placeholder="' + esc(ph) + '">' + esc(cs.note) + '</textarea>';
+    return h;
+  }
+  function claimLabel(id, change) { var cs = st.c[id], first = DIL.firstName(cs.claim.staffName); return change ? S.claimQ.changeButton(first) : cs.approve ? S.claimQ.button(first, cs.amount, cs.claim.amountClaimed) : S.claimQ.declineButton(first); }
+  function redrawClaim(card) {
+    var id = card.dataset.id; $('#cd-' + CSS.escape(id)).innerHTML = claimDecision(id);
+    var db = $('[data-act=cdecide]', card); if (!isBusy(db)) db.textContent = claimLabel(id, !!db.dataset.change);
+  }
+  function claimChoose(btn) { var card = btn.closest('.ccard'), cs = st.c[card.dataset.id]; cs.approve = btn.dataset.c === 'approve'; redrawClaim(card); if (!cs.approve) { var ta = $('textarea', card); if (ta && !ta.value) ta.focus(); } }
+  function claimAmount(btn, delta) {
+    var card = btn.closest('.ccard'), cs = st.c[card.dataset.id], next = Math.round((cs.amount + delta) * 2) / 2;
+    if (next < 0.5 || next > cs.claim.amountClaimed) return;
+    cs.amount = next; redrawClaim(card);
+  }
+  function decideClaim(btn) {
+    var card = btn.closest('.ccard'), id = card.dataset.id, cs = st.c[id], msg = $('#cmsg-' + CSS.escape(id)), first = DIL.firstName(cs.claim.staffName), change = !!btn.dataset.change, Q = S.claimQ;
+    var note = cs.note.trim(), fewer = cs.approve && cs.amount < cs.claim.amountClaimed;
+    if (!cs.approve && !note) { msg.textContent = Q.needNoteDecline; $('textarea', card).focus(); return; }
+    if (fewer && !note) { msg.textContent = Q.needNoteFewer; $('textarea', card).focus(); return; }
+    msg.textContent = ''; busy(btn, Q.busy);
+    call('decideClaim', id, { approve: cs.approve, amount: cs.approve ? cs.amount : 0, note: note }, change).then(function (r) {
+      if (!r.ok) {
+        unbusy(btn);
+        if (r.code === 'withdrawn') { toast(Q.gone(first)); renderQueue(); return; }
+        if (r.code === 'not_pending') { toast(Q.alreadyDecided); renderQueue(); return; }
+        if (r.code === 'booked_already') { msg.textContent = Q.bookedAlready(first, r.booked); return; }
+        if (r.code === 'note_required') { msg.textContent = r.why === 'declined' ? Q.needNoteDecline : Q.needNoteFewer; return; }
+        msg.textContent = Q.failed; return;
+      }
+      if (typeof r.queueCount === 'number') setBadge(r.queueCount);
+      if (change) { card.outerHTML = decidedClaimCard(r.claim); toast(Q.done(first)); return; }
+      card.innerHTML = '<div class="done-line">✓ ' + esc(Q.done(first)) + '</div>';
+      setTimeout(function () { card.classList.add('leaving'); setTimeout(function () { if (!document.body.contains(card)) return; card.remove(); afterQueueLeave('claims'); }, 450); }, 1400);
+    }).catch(function () { unbusy(btn); msg.textContent = Q.failed; serverFailed(); });
+  }
+  // After a card leaves: fix the counts on the switch and the sub-line; show the empty card when the view is done.
+  function afterQueueLeave(view) {
+    if (st.tab !== 'queue' || !st.queue) return;
+    var r = st.queue; if (view === 'claims') r.claims = r.claims.filter(function (k) { return st.c[k.claimId] && document.querySelector('.ccard[data-id="' + k.claimId + '"]'); }); else r.requests = r.requests.filter(function (q) { return document.querySelector('.qcard:not(.ccard)[data-id="' + q.id + '"]'); });
+    var sw = $('.views'); if (sw) sw.outerHTML = viewSwitch(st.qv, r.claims.length, r.requests.length, 'view');
+    var sub = $('.page-head .sub'); if (sub) sub.textContent = S.views.sub(r.claims.length, r.requests.length);
+    var left = view === 'claims' ? $$('.ccard').length : $$('.qcard:not(.ccard)').length, V = S.views;
+    if (!left && $('#main')) $('#main').insertAdjacentHTML('beforeend', '<div class="card"><p class="empty">' + esc(view === 'claims' ? V.emptyClaims : V.emptyBookings) + '</p>' + (view === 'claims' && r.requests.length ? '<p><button type="button" class="link" data-act="view" data-v="bookings">' + esc(V.otherBookings(r.requests.length)) + '</button></p>' : view === 'bookings' && r.claims.length ? '<p><button type="button" class="link" data-act="view" data-v="claims">' + esc(V.otherClaims(r.claims.length)) + '</button></p>' : '') + '</div>');
+  }
+  // ----- a booking card -----
   function decideCard(q, change) {
     var qs = st.q[q.id], first = DIL.firstName(q.staffName);
     var h = '<div class="card qcard" data-id="' + esc(q.id) + '"><div class="top"><div><div class="name">' + esc(q.staffName) + '</div><div class="meta">' + esc(DIL.formatDays(q.total) + ' · ' + S.queue.sent(q.submittedAt)) + '</div></div>' + (change ? chip(q.status) : '') + '</div>' + insteadLine(q);
     h += '<ul class="rows" id="rows-' + esc(q.id) + '">' + decideRows(q.id) + '</ul>';
-    h += reasonBlocks(q.days, S.queue.reason, S.queue.reasons);
-    if (q.yearSoFar) h += '<div class="yr">' + esc(S.queue.yearSoFar(first, q.yearSoFar.approved, q.yearSoFar.remaining)) + '</div>';
+    h += noteBlock(q.sharedReason, S.queue.note);
+    h += yearLine(first, q.balance);
     if (change) h += '<p class="inline-msg" style="color:#8A6A0C">' + esc(S.queue.changeWarning) + '</p>';
     h += '<label class="f" id="nl-' + esc(q.id) + '" for="note-' + esc(q.id) + '">' + esc(noteLabel(q.id)) + '</label><textarea id="note-' + esc(q.id) + '" data-act="note" placeholder="' + esc(S.queue.notePlaceholder) + '">' + esc(qs.note) + '</textarea>';
     h += '<div class="foot"><button class="btn primary lg" data-act="decide" data-change="' + (change ? '1' : '') + '">' + esc(decideLabel(q.id, change)) + '</button>' + (change ? '<button type="button" class="link" data-act="cancel-change">' + esc(S.queue.cancelChange) + '</button>' : '') + '<span class="inline-msg bad" id="msg-' + esc(q.id) + '"></span></div></div>';
     return h;
   }
-  // Live days in order; the declined ones share ONE reason (held on the first of them) unless a day is given its own.
   function liveDays(q) { return q.days.filter(function (d) { return d.status !== 'withdrawn' && d.status !== 'cancelled'; }); }
   function whyState(qs) {
     var dec = liveDays(qs.req).filter(function (d) { return qs.choices[d.dayId] === 'declined'; }), master = dec[0] || null;
@@ -361,7 +518,7 @@ var DILApp = (function () {
     var db = $('[data-act=decide]', card); if (!isBusy(db)) db.textContent = decideLabel(id, !!db.dataset.change);
   }
   function decide(btn) {
-    var card = btn.closest('.qcard'), id = card.dataset.id, qs = st.q[id], msg = $('#msg-' + CSS.escape(id)), t = tallies(id), first = DIL.firstName(qs.req.staffName), change = !!btn.dataset.change;
+    var card = btn.closest('.qcard'), id = card.dataset.id, qs = st.q[id], msg = $('#msg-' + CSS.escape(id)), first = DIL.firstName(qs.req.staffName), change = !!btn.dataset.change;
     var w = whyMap(qs);
     if (w.missing) { msg.textContent = w.many ? S.queue.needDayNotes : S.queue.needDayNote(w.missing.date); var ta = $('#dn-' + CSS.escape(w.missing.dayId)); if (ta) ta.focus(); return; }
     msg.textContent = ''; busy(btn, S.queue.busy);
@@ -370,26 +527,50 @@ var DILApp = (function () {
       if (typeof r.queueCount === 'number') setBadge(r.queueCount);
       if (change) { card.outerHTML = decidedCard(r.request); toast(S.queue.done(first)); return; }
       card.innerHTML = '<div class="done-line">✓ ' + esc(S.queue.done(first)) + '</div>';
-      setTimeout(function () { card.classList.add('leaving'); setTimeout(function () { if (!document.body.contains(card)) return; card.remove(); var left = $$('.qcard').length; var sub = $('.page-head .sub'); if (sub) sub.textContent = S.queue.sub(left); if (!left && $('#main')) $('#main').insertAdjacentHTML('beforeend', '<div class="card"><p class="empty">' + esc(S.queue.empty) + '</p></div>'); }, 450); }, 1400);
+      setTimeout(function () { card.classList.add('leaving'); setTimeout(function () { if (!document.body.contains(card)) return; card.remove(); afterQueueLeave('bookings'); }, 450); }, 1400);
     }).catch(function () { unbusy(btn); msg.textContent = S.queue.failed; serverFailed(); });
   }
 
-  /* ---------- approver: decided ---------- */
+  /* ---------- approver: Decided (two views) ---------- */
   function renderDecided() {
     var m = $('#main');
     call('decided', st.years.decided || null).then(function (r) {
       if (st.tab !== 'decided') return;
-      st.dec = r; st.years.decided = r.year.startYear; st.q = {};
-      var F = S.decided.filters, f = st.decidedFilter;
-      var filters = '<div class="filters">' + ['all', 'approved', 'declined', 'partly', 'other'].map(function (k) { return '<button type="button" class="' + (f === k ? 'on' : '') + '" data-act="filter" data-f="' + k + '">' + esc(F[k]) + '</button>'; }).join('') + '</div>';
-      var list = r.requests.filter(function (q) { return f === 'all' || (f === 'other' ? (q.status === 'withdrawn') : q.status === f); });
-      m.innerHTML = pageHead(S.decided.title, S.decided.sub(r.year.label), yearSelect(r.years, r.year)) + filters + '<div style="height:16px"></div>' + (list.length ? list.map(decidedCard).join('') : '<div class="card"><p class="empty">' + esc(S.decided.empty) + '</p></div>');
+      st.dec = r; st.years.decided = r.year.startYear; st.q = {}; st.c = {};
+      if (!st.dv) st.dv = r.claims.length || !r.requests.length ? 'claims' : 'bookings';
+      var h = pageHead(S.decided.title, S.decided.sub(r.year.label), yearSelect(r.years, r.year)) + viewSwitch(st.dv, r.claims.length, r.requests.length, 'dview');
+      if (st.dv === 'claims') {
+        var F = S.decided.claimFilters, f = st.claimFilter;
+        h += '<div class="filters">' + ['all', 'approved', 'partly', 'declined', 'other'].map(function (k) { return '<button type="button" class="' + (f === k ? 'on' : '') + '" data-act="cfilter" data-f="' + k + '">' + esc(F[k]) + '</button>'; }).join('') + '</div><div style="height:16px"></div>';
+        var cl = r.claims.filter(function (k) { return f === 'all' || (f === 'other' ? k.status === 'withdrawn' : k.status === f); });
+        h += cl.length ? cl.map(decidedClaimCard).join('') : '<div class="card"><p class="empty">' + esc(S.decided.emptyClaims) + '</p></div>';
+      } else {
+        var FB = S.decided.filters, fb = st.decidedFilter;
+        h += '<div class="filters">' + ['all', 'approved', 'declined', 'partly', 'other'].map(function (k) { return '<button type="button" class="' + (fb === k ? 'on' : '') + '" data-act="filter" data-f="' + k + '">' + esc(FB[k]) + '</button>'; }).join('') + '</div><div style="height:16px"></div>';
+        var list = r.requests.filter(function (q) { return fb === 'all' || (fb === 'other' ? (q.status === 'withdrawn') : q.status === fb); });
+        h += list.length ? list.map(decidedCard).join('') : '<div class="card"><p class="empty">' + esc(S.decided.empty) + '</p></div>';
+      }
+      m.innerHTML = h;
     }).catch(function () { if (st.tab === 'decided') m.innerHTML = errorCard(); });
   }
+  function decidedClaimCard(k) {
+    var Q = S.claimQ, h = '<div class="card req claim" data-id="' + esc(k.claimId) + '"><div class="top"><div><span class="t">' + esc(k.staffName) + '</span> <span class="m">· ' + esc(Q.claims(k.amountClaimed) + ' · ' + Q.sent(k.submittedAt)) + '</span></div>' + claimChip(k) + '</div>';
+    h += '<div class="reason"><b>' + esc(Q.what) + '</b>' + esc(k.reason) + '</div><div class="reason when"><b>' + esc(Q.when) + '</b>' + esc(DIL.formatFull(k.workDate)) + '</div>';
+    if (k.decisionNote) h += '<div class="note"><b>' + esc(S.decided.note) + '</b>' + esc(k.decisionNote) + '</div>';
+    if (k.decidedAt) h += '<p class="muted small" style="margin:8px 0 0">' + esc(S.decided.decidedBy(k.decidedByName, k.decidedAt)) + '</p>';
+    if (k.status !== 'withdrawn' && k.startYear === st.me.year.startYear) h += '<div class="actions"><button class="btn sm" data-act="cchange">' + esc(S.decided.change) + '</button></div>';
+    return h + '</div>';
+  }
+  function startChangeClaim(btn) {
+    var card = btn.closest('.req'), k = st.dec.claims.filter(function (x) { return x.claimId === card.dataset.id; })[0];
+    st.c[k.claimId] = { claim: k, approve: k.status !== 'declined', amount: k.status === 'declined' ? k.amountClaimed : k.amountApproved, note: k.decisionNote || '' };
+    card.outerHTML = claimCard(k, true);
+  }
+  function cancelChangeClaim(btn) { var card = btn.closest('.ccard'), k = st.c[card.dataset.id].claim; card.outerHTML = decidedClaimCard(k); }
   function decidedCard(q) {
     var h = '<div class="card req" data-id="' + esc(q.id) + '"><div class="top"><div><span class="t">' + esc(q.staffName) + '</span> <span class="m">· ' + esc(DIL.formatDays(q.total) + ' · ' + S.queue.sent(q.submittedAt)) + '</span></div>' + chip(q.status) + '</div>' + insteadLine(q);
     h += dayRows(q);
-    h += reasonBlocks(q.days, S.queue.reason, S.queue.reasons);
+    h += noteBlock(q.sharedReason, S.queue.note);
     if (q.decisionNote) h += '<div class="note"><b>' + esc(S.decided.note) + '</b>' + esc(q.decisionNote) + '</div>';
     if (q.decidedAt) h += '<p class="muted small" style="margin:8px 0 0">' + esc(S.decided.decidedBy(q.decidedByName, q.decidedAt)) + '</p>';
     if (q.status !== 'withdrawn' && q.startYear === st.me.year.startYear) h += '<div class="actions"><button class="btn sm" data-act="change">' + esc(S.decided.change) + '</button></div>';
@@ -408,19 +589,19 @@ var DILApp = (function () {
     var m = $('#main');
     call('overview', st.years.overview || null).then(function (r) {
       if (st.tab !== 'overview') return;
-      st.years.overview = r.year.startYear; var T = S.overview.tiles, t = r.totals, C = S.overview.cols;
+      st.years.overview = r.year.startYear; var T = S.overview.tiles, t = r.totals, C = S.overview.cols, keys = ['claimed', 'entitled', 'booked', 'taken', 'left', 'awaiting'];
       var tools = yearSelect(r.years, r.year) + '<button class="btn" data-act="csv">' + esc(S.overview.csv) + '</button>' + (st.me.sheetUrl ? '<a class="btn quiet" href="' + esc(st.me.sheetUrl) + '" target="_top">' + esc(S.overview.sheet) + '</a>' : '');
       var h = pageHead(S.overview.title, S.overview.sub(r.year.label), tools);
-      h += '<div class="tiles">' + tile('navy', t.requested, T.requested, T.requestedSub(r.rows.length)) + tile('ok', t.approved, T.approved, T.approvedSub(t.taken, t.remaining)) + tile('no', t.declined, T.declined, T.declinedSub) + tile('wait', t.pending, T.pending, T.pendingSub) + '</div>';
+      h += '<div class="tiles">' + tile('ok', t.entitled, T.approved, T.approvedSub(t.claimsApproved, t.staffWithApproved)) + tile('navy', t.booked, T.booked, T.bookedSub(t.taken)) + tile('gold', t.left, T.left, T.leftSub) + tile('wait', t.awaiting, T.pending, T.pendingSub(t.claimsPendingAmount, t.pending)) + '</div>';
       h += '<div class="card"><h3>' + esc(S.overview.away) + '</h3>' + (r.away.length ? '<ul class="rows">' + r.away.map(function (d) { return '<li><span class="d">' + esc(DIL.formatFull(d.date)) + '</span><span class="who">' + esc(d.staffName) + '</span><span class="grow"></span><span class="p">' + esc(S.portion[d.portion]) + '</span></li>'; }).join('') + '</ul>' : '<p class="empty">' + esc(S.overview.awayEmpty) + '</p>') + '</div>';
       var max = Math.max(1, Math.max.apply(null, r.buckets.map(function (b) { return b.approved + b.pending; })));
       h += '<div class="card"><h3>' + esc(S.overview.byMonth) + '</h3><div class="bars">' + r.buckets.map(function (b) {
         var tot = b.approved + b.pending;
         return '<div class="col' + (b.m === r.currentMonth ? ' now' : '') + '"><div class="v">' + (tot ? esc(num(tot)) : '') + '</div>' + (b.pending ? '<div class="b p" style="height:' + (b.pending / max * 100) + '%"></div>' : '') + '<div class="b" style="height:' + Math.max(1.5, b.approved / max * 100) + '%"></div><div class="l">' + esc(b.label) + '</div></div>';
       }).join('') + '</div><div class="legend" style="margin-top:14px"><span><i style="background:var(--navy)"></i>' + esc(S.overview.byMonthLegend.approved) + '</span><span><i style="background:var(--gold)"></i>' + esc(S.overview.byMonthLegend.pending) + '</span></div></div>';
-      h += '<div class="card"><h3>' + esc(S.overview.byStaff) + '</h3>' + (r.rows.length ? '<div class="table-wrap"><table class="table"><thead><tr>' + ['name', 'requested', 'approved', 'declined', 'pending', 'taken', 'remaining'].map(function (k) { return '<th>' + esc(C[k]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
-        r.rows.map(function (x) { return '<tr><td>' + esc(x.name) + '</td>' + ['requested', 'approved', 'declined', 'pending', 'taken', 'remaining'].map(function (k) { return '<td class="' + (x[k] ? '' : 'z') + '">' + esc(num(x[k])) + '</td>'; }).join('') + '</tr>'; }).join('') +
-        '<tr class="total"><td></td>' + ['requested', 'approved', 'declined', 'pending', 'taken', 'remaining'].map(function (k) { return '<td>' + esc(num(t[k])) + '</td>'; }).join('') + '</tr></tbody></table></div>' : '<p class="empty">' + esc(S.overview.byStaffEmpty) + '</p>') + '</div>';
+      h += '<div class="card"><h3>' + esc(S.overview.byStaff) + '</h3>' + (r.rows.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>' + esc(C.name) + '</th>' + keys.map(function (k) { return '<th>' + esc(C[k]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        r.rows.map(function (x) { return '<tr><td>' + esc(x.name) + '</td>' + keys.map(function (k) { return '<td class="' + (x[k] ? '' : 'z') + '">' + esc(num(x[k])) + '</td>'; }).join('') + '</tr>'; }).join('') +
+        '<tr class="total"><td></td>' + keys.map(function (k) { return '<td>' + esc(num(t[k])) + '</td>'; }).join('') + '</tr></tbody></table></div><p class="muted small" style="margin:12px 0 0">' + esc(S.overview.colsHelp) + '</p>' : '<p class="empty">' + esc(S.overview.byStaffEmpty) + '</p>') + '</div>';
       m.innerHTML = h;
     }).catch(function () { if (st.tab === 'overview') m.innerHTML = errorCard(); });
   }
@@ -485,27 +666,40 @@ var DILApp = (function () {
     switch (act) {
       case 'tab': go(t.dataset.tab); break;
       case 'retry': go(st.tab); break;
-      case 'leave': st.nr.leaveOK = true; go(t.dataset.to); break;
+      case 'leave': if (st.nr) st.nr.leaveOK = true; if (st.cl) st.cl.leaveOK = true; go(t.dataset.to); break;
       case 'stay': t.closest('.leave-bar').remove(); break;
       case 'door-name': doorName(t); break;
       case 'name-edit': nameEdit(); break;
       case 'name-save': nameSave(t); break;
       case 'name-keep': go(st.tab); break;
-      case 'withdraw-ask': askWithdraw(t); break;
+      case 'withdraw-ask': askWithdraw(t, false); break;
+      case 'withdraw-claim-ask': askWithdraw(t, true); break;
       case 'withdraw-yes': doWithdraw(t); break;
-      case 'withdraw-no': renderDashboardCardsOnly(); break;
+      case 'withdraw-claim-yes': doWithdrawClaim(t); break;
+      case 'withdraw-no': renderDashboard(); break;
       case 'cancel-ask': askCancel(t); break;
       case 'cancel-yes': doCancel(t); break;
       case 'cancel-no': renderDashboard(); break;
+      case 'cl-quick': st.cl.reason = t.dataset.q; $('#cl-reason').value = t.dataset.q; drawClaimSummary(); $('#cl-date').focus(); break;
+      case 'cl-less': claimStep(-0.5); break;
+      case 'cl-more': claimStep(0.5); break;
+      case 'cl-send': sendClaim(t); break;
       case 'cal-prev': st.nr.mi--; drawCalendar(); break;
       case 'cal-next': st.nr.mi++; drawCalendar(); break;
       case 'cal-day': calClick(t); break;
       case 'typed-add': typedAdd(); break;
       case 'remove-day': removeDay(t.dataset.iso); break;
-      case 'portion': st.nr.picked[t.dataset.iso].portion = t.dataset.p; drawPicked(); drawCalendar(); drawSummary(); break;
-      case 'quick': if (st.nr.perDay) { var last = document.activeElement; var iso = last && last.dataset && last.dataset.iso ? last.dataset.iso : pickedList()[0]; if (iso) { st.nr.picked[iso].reason = t.dataset.q; drawReason(); } } else { st.nr.reason = t.dataset.q; drawReason(); } drawSummary(); break;
-      case 'toggle-perday': st.nr.perDay = !st.nr.perDay; if (st.nr.perDay) pickedList().forEach(function (iso) { if (!st.nr.picked[iso].reason) st.nr.picked[iso].reason = st.nr.reason; }); drawReason(); drawSummary(); break;
+      case 'portion': setPortion(t); break;
       case 'send': send(t); break;
+      case 'view': st.qv = t.dataset.v; renderQueue(); break;
+      case 'dview': st.dv = t.dataset.v; renderDecided(); break;
+      case 'cchoose': claimChoose(t); break;
+      case 'cless': claimAmount(t, -0.5); break;
+      case 'cmore': claimAmount(t, 0.5); break;
+      case 'cdecide': decideClaim(t); break;
+      case 'cchange': startChangeClaim(t); break;
+      case 'ccancel-change': cancelChangeClaim(t); break;
+      case 'cfilter': st.claimFilter = t.dataset.f; renderDecided(); break;
       case 'choose': choose(t); break;
       case 'own-note': ownNote(t); break;
       case 'use-same': useSame(t); break;
@@ -524,12 +718,13 @@ var DILApp = (function () {
       case 'add-staff': addStaff(t); break;
     }
   }
-  function renderDashboardCardsOnly() { renderDashboard(); }
   function onInput(e) {
     var t = e.target, act = t.dataset && t.dataset.act; if (!act) return;
     if (act === 'reason') { st.nr.reason = t.value; drawSummary(); }
-    else if (act === 'reason-day') { st.nr.picked[t.dataset.iso].reason = t.value; drawSummary(); }
+    else if (act === 'cl-reason') { st.cl.reason = t.value; drawClaimSummary(); if (t.value.trim()) setClaimMsg(''); }
+    else if (act === 'cl-date') { claimDateInput(t.value); }
     else if (act === 'note') { var card = t.closest('.qcard'); st.q[card.dataset.id].note = t.value; }
+    else if (act === 'cnote') { var cc = t.closest('.ccard'); st.c[cc.dataset.id].note = t.value; if (t.value.trim()) $('#cmsg-' + CSS.escape(cc.dataset.id)).textContent = ''; }
     else if (act === 'daynote') { var qc = t.closest('.qcard'), qs2 = st.q[qc.dataset.id]; if (t.dataset.shared) qs2.why = t.value; else qs2.own[t.dataset.day] = t.value; if (t.value.trim()) $('#msg-' + CSS.escape(qc.dataset.id)).textContent = ''; }
   }
   function onChange(e) {
@@ -539,6 +734,7 @@ var DILApp = (function () {
   function onKey(e) {
     if (e.key !== 'Enter') return;
     if (e.target.id === 'typed') { e.preventDefault(); typedAdd(); }
+    else if (e.target.id === 'cl-date') { e.preventDefault(); }
     else if (e.target.id === 'door-name') { e.preventDefault(); doorName($('[data-act=door-name]')); }
     else if (e.target.id === 'my-name') { e.preventDefault(); nameSave($('[data-act=name-save]')); }
   }

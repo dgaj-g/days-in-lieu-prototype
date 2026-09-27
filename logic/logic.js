@@ -1,7 +1,7 @@
 /* Days in Lieu · logic.js — the judgement-bearing routines.
    PURE: no DOM, no SpreadsheetApp, no Session. Runs unchanged in the browser, in Node (tests)
    and in Apps Script V8 (pasted as Logic.gs). Dates are ISO strings 'YYYY-MM-DD' everywhere.
-   Design window: Fable 5.1, 17 Sep 2026. */
+   Design window: Fable 5.1, 17 Sep 2026; claims vs bookings 27 Sep 2026. */
 var DIL = (function () {
   'use strict';
 
@@ -12,6 +12,8 @@ var DIL = (function () {
   var MON_ALIASES = { sept: 8 };
   var PORTIONS = ['full', 'am', 'pm'];
   var DAY_STATUSES = ['pending', 'approved', 'declined', 'withdrawn', 'cancelled'];
+  var CLAIM_STATUSES = ['pending', 'approved', 'partly', 'declined', 'withdrawn'];
+  var CLAIM_MAX = 15;   // days one claim may ask for
 
   // ---------- dates ----------
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
@@ -191,8 +193,7 @@ var DIL = (function () {
       if (PORTIONS.indexOf(d.portion) < 0) return { ok: false, code: 'bad_portion', date: d.date };
       var prob = dateProblem(d.date, { todayISO: ctx.todayISO, window: ctx.window, closures: ctx.closures, existing: ctx.existing, picked: seen });
       if (prob) return { ok: false, code: prob.code, date: d.date, detail: prob };
-      var reason = String(d.reason || '').trim() || shared;
-      if (!reason) return { ok: false, code: 'no_reason', date: d.date };
+      var reason = String(d.reason || '').trim() || shared; // a booking's note is optional (27 Sep 2026): the reason lives on the claim
       if (reason.length > 500) return { ok: false, code: 'reason_too_long', date: d.date };
       seen.push(d.date);
       clean.push({ date: d.date, portion: d.portion, value: portionValue(d.portion), reason: reason });
@@ -202,6 +203,15 @@ var DIL = (function () {
     if (rep) {
       if (typeof rep !== 'object' || !/^DIL-\d{4}-\d{4}$/.test(String(rep.id || '')) || !Array.isArray(rep.dates) || !rep.dates.length || rep.dates.length > 30 || !rep.dates.every(isValidISO)) return { ok: false, code: 'bad_replaces' };
       replaces = { id: String(rep.id), dates: rep.dates.slice().sort() };
+    }
+    // Bookings draw only from days the Principal has approved on a claim (ctx.balance = {startYear: left}).
+    if (ctx.balance) {
+      var perYear = {};
+      clean.forEach(function (d) { var sy = inYear(d.date, ctx.window.year) ? ctx.window.year.startYear : ctx.window.year.startYear + 1; perYear[sy] = (perYear[sy] || 0) + d.value; });
+      for (var sy in perYear) {
+        var left = Math.round((Number(ctx.balance[sy]) || 0) * 2) / 2, want = Math.round(perYear[sy] * 2) / 2;
+        if (want > left) return { ok: false, code: 'over_balance', year: Number(sy), left: left, total: want };
+      }
     }
     return { ok: true, days: clean, total: total(clean), sharedReason: shared, replaces: replaces };
   }
@@ -260,6 +270,94 @@ var DIL = (function () {
   function approvers(staff) { return (staff || []).filter(function (s) { return roleFor(s.email, staff) === 'approver'; }); }
   function firstName(name) { var n = String(name || '').trim().replace(/^(mr|mrs|ms|miss|dr|fr|sr)\.?\s+/i, ''); return n.split(/\s+/)[0] || n; }
 
+  // ---------- claims (days in lieu a person says they are owed) ----------
+  // A claim: {claimId, staffEmail, staffName, submittedAt, workDate, reason, amountClaimed, amountApproved, status, decisionNote, decidedAt, decidedBy, startYear}
+  function isHalfStep(n) { n = Number(n); return isFinite(n) && n > 0 && Math.round(n * 2) === n * 2; }
+  function nextClaimId(existingIds, year) {
+    var prefix = 'CLM-' + String(year.startYear).slice(2) + pad2((year.startYear + 1) % 100) + '-', max = 0;
+    for (var i = 0; i < (existingIds || []).length; i++) {
+      var id = String(existingIds[i] || ''); if (id.indexOf(prefix) !== 0) continue;
+      var n = parseInt(id.slice(prefix.length), 10); if (n > max) max = n;
+    }
+    return prefix + ('000' + (max + 1)).slice(-4);
+  }
+  // The date of the work. Past dates are the normal case; when no year is typed, the occurrence inside
+  // the current academic year wins ('12 Sep' on 17 Sep 2026 → 2026-09-12; '5 Feb' → 2027-02-05).
+  function parseClaimDate(text, ctx) {
+    var iso = parseTypedDate(text, ctx); if (!iso) return null;
+    var t = String(text || '').toLowerCase().replace(/(\d+)(st|nd|rd|th)\b/g, '$1').replace(/[,\.]/g, ' ').replace(/\s+/g, ' ').trim();
+    var hasYear = /^\d{4}-\d{1,2}-\d{1,2}$/.test(t) || /^\d{1,2}[\/\- ]\d{1,2}[\/\- ](\d{2}|\d{4})$/.test(t) || /^\d{1,2} [a-z]+ (\d{2}|\d{4})$/.test(t) || /^[a-z]+ \d{1,2} (\d{2}|\d{4})$/.test(t);
+    var year = ctx && ctx.year; if (hasYear || !year) return iso;
+    var p = parts(iso), a = toISO(year.startYear, p.m, p.d), b = toISO(year.startYear + 1, p.m, p.d);
+    if (isValidISO(a) && inYear(a, year)) return a;
+    if (isValidISO(b) && inYear(b, year)) return b;
+    return iso;
+  }
+  // Validate a claim as it arrives at the server. sub: {reason, workDate, amount}; ctx: {todayISO, year}.
+  function validateClaim(sub, ctx) {
+    var reason = String((sub && sub.reason) || '').trim();
+    if (!reason) return { ok: false, code: 'no_reason' };
+    if (reason.length > 500) return { ok: false, code: 'reason_too_long' };
+    var amount = Number(sub && sub.amount);
+    if (!isHalfStep(amount)) return { ok: false, code: 'bad_amount' };
+    if (amount > CLAIM_MAX) return { ok: false, code: 'amount_too_big', max: CLAIM_MAX };
+    var date = String((sub && sub.workDate) || '').trim();
+    if (!isValidISO(date)) return { ok: false, code: 'bad_date' };
+    if (!inYear(date, ctx.year)) return { ok: false, code: 'date_outside_year', year: ctx.year.label };
+    return { ok: true, claim: { reason: reason, workDate: date, amount: amount } };
+  }
+  // The Principal's decision on a claim. decision: {approve: true|false, amount (days approved; blank = all), note}.
+  // Fewer days than claimed and a decline both NEED a note (it goes in the email). Never above the amount claimed, never zero (that is a decline).
+  function applyClaimDecision(claim, decision, decidedBy, nowStamp, opts) {
+    var allowChange = !!(opts && opts.allowChange);
+    if (!claim) return { ok: false, code: 'not_pending' };
+    if (claim.status === 'withdrawn') return { ok: false, code: 'withdrawn' };
+    if (claim.status !== 'pending' && !allowChange) return { ok: false, code: 'not_pending' };
+    var note = String((decision && decision.note) || '').trim();
+    if (note.length > 1000) return { ok: false, code: 'note_too_long' };
+    var claimed = Math.round((Number(claim.amountClaimed) || 0) * 2) / 2, status, approved;
+    if (!decision || !decision.approve) {
+      if (!note) return { ok: false, code: 'note_required', why: 'declined' };
+      status = 'declined'; approved = 0;
+    } else {
+      var a = decision.amount; approved = (a === undefined || a === null || a === '') ? claimed : Number(a);
+      if (!isHalfStep(approved) || approved > claimed) return { ok: false, code: 'bad_amount', claimed: claimed };
+      if (approved < claimed) { if (!note) return { ok: false, code: 'note_required', why: 'fewer' }; status = 'partly'; }
+      else status = 'approved';
+    }
+    var copy = {}; for (var k in claim) copy[k] = claim[k];
+    copy.status = status; copy.amountApproved = approved; copy.decisionNote = note; copy.decidedAt = nowStamp; copy.decidedBy = decidedBy;
+    return { ok: true, claim: copy, outcome: status, approved: approved, claimed: claimed };
+  }
+  function canWithdrawClaim(claim) { return !!claim && claim.status === 'pending'; }
+  // One person's balance for one academic year. Claims count by the year they were sent in (no carry-over);
+  // bookings by their date. left = approved on claims − booked − awaiting decision, never below 0.
+  function balance(claims, days, today, year) {
+    var b = { claimed: 0, approved: 0, booked: 0, taken: 0, upcomingBooked: 0, pending: 0, left: 0, claims: 0, claimsApproved: 0, claimsPending: 0, claimsPendingAmount: 0, claimsDeclined: 0 };
+    (claims || []).forEach(function (c) {
+      if (Number(c.startYear) !== year.startYear) return;
+      var claimed = Number(c.amountClaimed) || 0;
+      if (c.status === 'approved' || c.status === 'partly') { b.claims++; b.claimsApproved++; b.claimed += claimed; b.approved += Number(c.amountApproved) || 0; }
+      else if (c.status === 'pending') { b.claims++; b.claimed += claimed; b.claimsPending++; b.claimsPendingAmount += claimed; }
+      else if (c.status === 'declined') { b.claims++; b.claimed += claimed; b.claimsDeclined += claimed; }
+    });
+    var s = summarise(days || [], today, year);
+    b.booked = s.approved; b.taken = s.taken; b.upcomingBooked = s.remaining; b.pending = s.pending;
+    b.left = Math.max(0, b.approved - b.booked - b.pending);
+    ['claimed', 'approved', 'booked', 'taken', 'upcomingBooked', 'pending', 'left', 'claimsPendingAmount', 'claimsDeclined'].forEach(function (k) { b[k] = Math.round(b[k] * 2) / 2; });
+    return b;
+  }
+  // May the Principal change a decided claim to `newAmount` (0 = decline)? Not below what is already booked or awaiting.
+  function canReduceClaim(claims, days, today, year, claimId, newAmount) {
+    var target = null; (claims || []).forEach(function (c) { if (c.claimId === claimId) target = c; });
+    if (!target) return { ok: false, code: 'not_found' };
+    var b = balance(claims, days, today, year);
+    var current = (target.status === 'approved' || target.status === 'partly') ? (Number(target.amountApproved) || 0) : 0;
+    var after = Math.round((b.approved - current + (Number(newAmount) || 0)) * 2) / 2, committed = Math.round((b.booked + b.pending) * 2) / 2;
+    if (after < committed) return { ok: false, code: 'booked_already', booked: committed, approvedAfter: after, over: Math.round((committed - after) * 2) / 2 };
+    return { ok: true, left: Math.round((after - committed) * 2) / 2, booked: committed };
+  }
+
   // ---------- dashboards ----------
   // days: [{date, value, status, ...}] for ONE person; counts only days inside `year`.
   function summarise(days, today, year) {
@@ -276,19 +374,23 @@ var DIL = (function () {
     return s;
   }
   // Whole-school table. days: every day row; staff: the Staff tab.
-  function perStaff(days, staff, today, year) {
-    var byEmail = {}, order = [];
+  function perStaff(days, staff, today, year, claims) {
+    var byEmail = {}, order = [], claimsBy = {};
+    (claims || []).forEach(function (c) { var e = norm(c.staffEmail); (claimsBy[e] = claimsBy[e] || []).push(c); });
     (staff || []).forEach(function (s) { var e = norm(s.email); if (!e || !isOnList(s)) return; byEmail[e] = { email: e, name: s.name || e, role: roleFor(e, staff), days: [] }; order.push(e); });
     days.forEach(function (d) { var e = norm(d.staffEmail); if (!byEmail[e]) { byEmail[e] = { email: e, name: d.staffName || e, role: 'unknown', days: [] }; order.push(e); } byEmail[e].days.push(d); });
+    (claims || []).forEach(function (c) { var e = norm(c.staffEmail); if (!byEmail[e]) { byEmail[e] = { email: e, name: c.staffName || e, role: 'unknown', days: [] }; order.push(e); } });
     return order.map(function (e) {
-      var r = byEmail[e], s = summarise(r.days, today, year);
-      return { email: r.email, name: r.name, role: r.role, requested: Math.round((s.approved + s.declined + s.pending) * 2) / 2, approved: s.approved, declined: s.declined, pending: s.pending, taken: s.taken, remaining: s.remaining };
+      var r = byEmail[e], s = summarise(r.days, today, year), b = balance(claimsBy[e] || [], r.days, today, year);
+      return { email: r.email, name: r.name, role: r.role, requested: Math.round((s.approved + s.declined + s.pending) * 2) / 2, approved: s.approved, declined: s.declined, pending: s.pending, taken: s.taken, remaining: s.remaining,
+        claimed: b.claimed, entitled: b.approved, booked: b.booked, left: b.left, claims: b.claims, claimsApproved: b.claimsApproved, claimsPending: b.claimsPending, claimsPendingAmount: b.claimsPendingAmount, claimsDeclined: b.claimsDeclined, awaiting: Math.round((b.pending + b.claimsPendingAmount) * 2) / 2 };
     }).sort(function (a, b) { return a.name.localeCompare(b.name); });
   }
   function schoolTotals(rows) {
-    var t = { requested: 0, approved: 0, declined: 0, pending: 0, taken: 0, remaining: 0, staffWithDays: 0 };
-    rows.forEach(function (r) { ['requested', 'approved', 'declined', 'pending', 'taken', 'remaining'].forEach(function (k) { t[k] += r[k]; }); if (r.requested > 0) t.staffWithDays++; });
-    ['requested', 'approved', 'declined', 'pending', 'taken', 'remaining'].forEach(function (k) { t[k] = Math.round(t[k] * 2) / 2; });
+    var keys = ['requested', 'approved', 'declined', 'pending', 'taken', 'remaining', 'claimed', 'entitled', 'booked', 'left', 'claims', 'claimsApproved', 'claimsPending', 'claimsPendingAmount', 'claimsDeclined', 'awaiting'];
+    var t = { staffWithDays: 0, staffWithClaims: 0, staffWithApproved: 0 }; keys.forEach(function (k) { t[k] = 0; });
+    rows.forEach(function (r) { keys.forEach(function (k) { t[k] += Number(r[k]) || 0; }); if (r.requested > 0) t.staffWithDays++; if (r.claims > 0) t.staffWithClaims++; if (r.claimsApproved > 0) t.staffWithApproved++; });
+    keys.forEach(function (k) { t[k] = Math.round(t[k] * 2) / 2; });
     return t;
   }
   // Approved days per month of the academic year, in year order (Sep … Aug by default).
@@ -322,13 +424,14 @@ var DIL = (function () {
   }
 
   return {
-    PORTIONS: PORTIONS, DAY_STATUSES: DAY_STATUSES, DAY_SHORT: DAY_SHORT, DAY_LONG: DAY_LONG, MON_SHORT: MON_SHORT, MON_LONG: MON_LONG,
+    PORTIONS: PORTIONS, DAY_STATUSES: DAY_STATUSES, CLAIM_STATUSES: CLAIM_STATUSES, CLAIM_MAX: CLAIM_MAX, DAY_SHORT: DAY_SHORT, DAY_LONG: DAY_LONG, MON_SHORT: MON_SHORT, MON_LONG: MON_LONG,
     toISO: toISO, parts: parts, isValidISO: isValidISO, addDays: addDays, daysBetween: daysBetween, weekdayIndex: weekdayIndex, isWeekend: isWeekend, todayISO: todayISO,
     formatLong: formatLong, formatShort: formatShort, formatFull: formatFull, formatMonth: formatMonth, formatUK: formatUK, formatDays: formatDays,
     portionValue: portionValue, total: total,
     yearBounds: yearBounds, academicYearOf: academicYearOf, currentYear: currentYear, requestWindow: requestWindow, inYear: inYear,
     parseTypedDate: parseTypedDate, dateProblem: dateProblem, closureFor: closureFor, monthGrid: monthGrid, monthRange: monthRange,
     nextRequestId: nextRequestId, requestStatus: requestStatus, validateSubmission: validateSubmission, applyDecision: applyDecision, joinWords: joinWords, canWithdraw: canWithdraw, canCancelDay: canCancelDay,
+    isHalfStep: isHalfStep, nextClaimId: nextClaimId, parseClaimDate: parseClaimDate, validateClaim: validateClaim, applyClaimDecision: applyClaimDecision, canWithdrawClaim: canWithdrawClaim, balance: balance, canReduceClaim: canReduceClaim,
     norm: norm, findStaff: findStaff, isOnList: isOnList, registerVisitor: registerVisitor, roleFor: roleFor, approvers: approvers, firstName: firstName,
     summarise: summarise, perStaff: perStaff, schoolTotals: schoolTotals, monthBuckets: monthBuckets, offSoon: offSoon, csvOf: csvOf, reasonGroups: reasonGroups
   };

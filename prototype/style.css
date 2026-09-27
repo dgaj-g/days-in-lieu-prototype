@@ -273,3 +273,56 @@ select{width:auto;padding-right:32px}
   .table.staff tr.confirm-row{display:block;padding:0 0 10px}
   .table.staff tr.confirm-row td{padding:0}
 }
+
+/* ---------- fourth round (27 Sep 2026): the two doors, the two views, steppers, claim cards ---------- */
+.doors { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0 0 20px; }
+.door-card { display: flex; flex-direction: column; margin: 0; border-top: 5px solid var(--gold); }
+.door-card + .door-card { border-top-color: var(--navy); }
+.door-card .eyebrow { font: 700 12px/1 var(--text); letter-spacing: .12em; text-transform: uppercase; color: var(--gold-deep); margin: 0 0 10px; }
+.door-card + .door-card .eyebrow { color: var(--navy); }
+.door-card h3 { font: 700 26px/1.15 var(--display); margin: 0 0 8px; color: var(--navy); }
+.door-card p { margin: 0 0 18px; color: var(--muted); font-size: 15px; line-height: 1.5; }
+.door-card .foot { margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.door-card .left-line { font: 600 15px var(--text); color: var(--navy); }
+.door-card .state-line { font-size: 14px; color: var(--muted); line-height: 1.45; }
+.door-card.shut { background: var(--paper); }
+.door-card.shut h3 { color: var(--muted); }
+.tile.gold { border-top-color: var(--gold); }
+.tile.gold .n { color: var(--gold-deep); }
+.tile.navy .n { color: var(--navy); }
+h3.section { font: 700 20px/1.2 var(--display); color: var(--navy); margin: 26px 0 12px; }
+h3.section:first-of-type { margin-top: 6px; }
+.req .meta { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.req.claim .top .t { font: 600 16px/1.35 var(--text); }
+.req .top .m { font-size: 13px; color: var(--muted); }
+.reason.when { margin-top: 8px; }
+.views { display: inline-flex; border: 1.5px solid var(--navy); border-radius: 999px; padding: 3px; margin: 0 0 14px; background: #fff; }
+.views button { border: 0; background: transparent; border-radius: 999px; padding: 9px 20px; font: 600 15px var(--text); color: var(--navy); cursor: pointer; }
+.views button.on { background: var(--navy); color: #fff; }
+.views button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.view-help { margin: -4px 0 14px; }
+.stepper { display: inline-flex; align-items: center; border: 1.5px solid var(--hair); border-radius: 12px; background: #fff; overflow: hidden; }
+.stepper .st-btn { width: 48px; height: 48px; border: 0; background: var(--paper); font: 600 24px/1 var(--text); color: var(--navy); cursor: pointer; }
+.stepper .st-btn:hover:not(:disabled) { background: var(--navy-200); }
+.stepper .st-btn:disabled { color: var(--hair); cursor: default; }
+.stepper .st-btn:focus-visible { outline: 3px solid var(--gold); outline-offset: -3px; }
+.stepper .st-val { min-width: 96px; text-align: center; font: 700 20px var(--display); color: var(--navy); padding: 0 8px; }
+.amount-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 14px 0 0; }
+.amount-row .f { width: 100%; margin: 0 0 2px; }
+.amount-row .of { font-size: 14px; color: var(--muted); }
+.fewer { margin: 12px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--gold-soft); border-left: 4px solid var(--gold); font-size: 14px; color: var(--gold-deep); font-weight: 600; }
+.seg.decide.big { margin: 4px 0 0; }
+.seg.decide.big button { padding: 10px 18px; font-size: 15px; }
+.cdecide .f { margin-top: 16px; }
+.ccard .top .meta { margin-top: 3px; }
+.card.nothing { border-top: 5px solid var(--gold); }
+.card.nothing h3 { font: 700 24px/1.2 var(--display); color: var(--navy); margin: 0 0 8px; }
+.card.nothing p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
+.help.good { color: var(--ok); }
+@media (max-width: 720px) {
+  .doors { grid-template-columns: 1fr; }
+  .door-card h3 { font-size: 22px; }
+  .views { display: flex; }
+  .views button { flex: 1; text-align: center; padding: 9px 10px; font-size: 14px; }
+  .stepper .st-btn { width: 44px; height: 44px; }
+}
