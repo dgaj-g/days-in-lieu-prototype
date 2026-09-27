@@ -51,6 +51,27 @@ function api(name, args) {
 
 /* ---------- who is asking ---------- */
 function viewerEmail() { try { return DIL.norm(Session.getActiveUser().getEmail()); } catch (err) { return ''; } }
+
+/* A visitor's display name, e.g. "D Gartland", looked up by email in the Google Workspace directory (Admin SDK advanced
+   service, scope admin.directory.user.readonly). Proved on C2k 27 Sep 2026 — build/README.md, "Display names":
+   the directory gives the OWNER's own record, but refuses every other account with "Not Authorized to access this
+   resource/api", so for other staff this returns '' and the name door asks once. After one refusal the lookup rests
+   for a day (only the owner is still tried), so an ordinary visit never waits on a call that cannot succeed. */
+function displayName(email) {
+  var e = DIL.norm(email); if (!e) return '';
+  var props = PropertiesService.getScriptProperties(), owner = '';
+  try { owner = DIL.norm(Session.getEffectiveUser().getEmail()); } catch (err) {}
+  var rest = Number(props.getProperty('directoryRefusedAt') || 0);
+  if (e !== owner && rest && Date.now() - rest < 864e5) return '';
+  try {
+    var u = AdminDirectory.Users.get(e, { viewType: 'domain_public', projection: 'basic' });
+    var name = String((u && u.name && u.name.fullName) || '').replace(/\s+/g, ' ').trim();
+    return name && name.toLowerCase() !== e.split('@')[0] ? name : '';
+  } catch (err) {
+    if (/not authori[sz]ed/i.test(String(err && err.message || err)) && e !== owner) props.setProperty('directoryRefusedAt', String(Date.now()));
+    return '';
+  }
+}
 function today() { return DIL.todayISO(new Date()); }
 function appUrl() { try { return ScriptApp.getService().getUrl() || ''; } catch (err) { return ''; } }
 
@@ -139,10 +160,12 @@ function me(st, email) { var s = DIL.findStaff(email, st.staff); if (!s) throw n
 /* ---------- the API ---------- */
 var API = {
   whoami: function () {
-    var email = viewerEmail(), st = loadStore(), reg = email ? DIL.registerVisitor(st.staff, email, '') : { code: 'no_email' };
-    if (reg.code === 'added') { withLock(function () { appendRow('Staff', reg.row); }); st.staff.push(reg.row); }
+    var email = viewerEmail(), st = loadStore(), reg = email ? DIL.registerVisitor(st.staff, email, '') : { code: 'no_email' }, auto = '';
+    // The name comes from the directory when it answers; the name door asks only when it does not.
+    if (reg.code === 'added') { auto = displayName(email); reg.row.name = auto; withLock(function () { appendRow('Staff', reg.row); }); st.staff.push(reg.row); }
+    else if (reg.code === 'known' && !reg.row.name) { auto = displayName(email); if (auto) { reg.row.name = auto; withLock(function () { saveRow('Staff', reg.row); }); } }
     var s = email ? DIL.findStaff(email, st.staff) : null, role = email ? DIL.roleFor(email, st.staff) : 'unknown';
-    return { ok: true, email: email, name: s ? s.name : '', autoName: '', needName: !!(s && !s.name), removed: reg.code === 'removed', role: role, queueCount: queueCount(st, email), today: today(),
+    return { ok: true, email: email, name: s ? s.name : '', autoName: auto, needName: !!(s && !s.name), removed: reg.code === 'removed', role: role, queueCount: queueCount(st, email), today: today(),
              appUrl: appUrl(), sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
              year: DIL.currentYear(today(), st.cfg), window: DIL.requestWindow(today(), st.cfg) };
   },
@@ -298,7 +321,7 @@ function setup() {
       s.getRange('A:Z').setNumberFormat('@');                   // dates are ISO text, never Sheet dates
       s.getRange(1, 1, 1, HEAD[name].length).setValues([HEAD[name]]).setFontWeight('bold'); s.setFrozenRows(1);
       if (name === 'Config') CONFIG_DEFAULTS.forEach(function (row) { s.appendRow([row[0], row[1], row[2]]); });
-      if (name === 'Staff') { var e = viewerEmail(), p = DIL.norm(PRINCIPAL_EMAIL); if (e) s.appendRow([e, '', 'approver', 'yes']); if (p && p !== e) s.appendRow([p, '', 'approver', 'yes']); }
+      if (name === 'Staff') { var e = viewerEmail(), p = DIL.norm(PRINCIPAL_EMAIL); if (e) s.appendRow([e, displayName(e), 'approver', 'yes']); if (p && p !== e) s.appendRow([p, '', 'approver', 'yes']); }
     }
   });
   var first = book.getSheets()[0]; if (SHEETS.indexOf(first.getName()) < 0 && book.getSheets().length > SHEETS.length) book.deleteSheet(first);

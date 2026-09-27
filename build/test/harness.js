@@ -6,6 +6,8 @@ const src = ['Logic.gs', 'Strings.gs', 'Code.gs'].map(f => fs.readFileSync(path.
 
 /* ---------- stand-ins ---------- */
 let viewer = '', TZ = 'Europe/London', mails = [];
+// The directory: names it will give, accounts it refuses (as C2k refuses everyone but the owner), and a call count.
+const directory = { names: {}, refuse: {}, calls: 0 }, props = {};
 class Range {
   constructor(sheet, r, c, nr, nc) { Object.assign(this, { sheet, r, c, nr, nc }); }
   getValues() { const out = []; for (let i = 0; i < this.nr; i++) { const row = this.sheet.rows[this.r - 1 + i] || []; out.push(Array.from({ length: this.nc }, (_, j) => row[this.c - 1 + j] === undefined ? '' : row[this.c - 1 + j])); } return out; }
@@ -23,7 +25,9 @@ const book = { sheets: {}, getSheetByName(n) { return this.sheets[n] || null; },
 const ctx = {
   console, JSON, Date, Math, Number, String, Object, Array, RegExp, Error, parseInt, parseFloat, isFinite, encodeURIComponent, decodeURIComponent,
   SpreadsheetApp: { getActive: () => book, getUi: () => { throw new Error('no ui'); } },
-  Session: { getActiveUser: () => ({ getEmail: () => viewer }), getScriptTimeZone: () => TZ },
+  Session: { getActiveUser: () => ({ getEmail: () => viewer }), getEffectiveUser: () => ({ getEmail: () => 'admin@c2ken.net' }), getScriptTimeZone: () => TZ },
+  AdminDirectory: { Users: { get: (e) => { directory.calls++; if (directory.refuse[e]) throw new Error('API call to directory.users.get failed with error: Not Authorized to access this resource/api'); if (!directory.names[e]) throw new Error('Resource Not Found: userKey'); return { name: { fullName: directory.names[e] } }; } } },
+  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; } }) },
   MailApp: { sendEmail: (m) => { if (m.to.indexOf('@bounce.') >= 0) throw new Error('mail refused'); mails.push(m); } },
   HtmlService: { createTemplateFromFile: (n) => ({ evaluate() { return { setTitle() { return this; }, addMetaTag() { return this; }, setFaviconUrl() { return this; }, setXFrameOptionsMode() { return this; } }; } }), createHtmlOutputFromFile: () => ({ getContent: () => '' }), XFrameOptionsMode: { ALLOWALL: 1 } },
   Utilities: { formatDate: (d) => d.toISOString().slice(0, 10) },
@@ -172,5 +176,25 @@ threw = false; try { as('fmcalinden045@c2ken.net', 'myDays'); } catch (e) { thre
 threw = false; try { as('fmcalinden045@c2ken.net', 'submitClaim', { reason: 'x', workDays: [{ date: TODAY, portion: 'full' }] }); } catch (e) { threw = true; } ok(threw, 'approver cannot claim');
 threw = false; try { as('nobody@c2ken.net', 'setMyName', 'X'); call('nope'); } catch (e) { threw = true; } ok(threw, 'unknown call name throws');
 ok(JSON.stringify(as('fmcalinden045@c2ken.net', 'decided')).indexOf('_row') < 0, 'sheet row numbers never leave the server');
+
+// 12. display names from the directory; the name door only when it has none
+directory.names['newhire400@c2ken.net'] = 'C Hughes';
+me = as('newhire400@c2ken.net', 'whoami');
+eq([me.role, me.name, me.autoName, me.needName], ['staff', 'C Hughes', 'C Hughes', false], 'name obtained: newcomer registered with it, no name door');
+eq(rows('Staff').filter(r => r[0] === 'newhire400@c2ken.net')[0][1], 'C Hughes', 'and the name is on the Staff sheet');
+me = as('knew400@c2ken.net', 'whoami');
+eq([me.name, me.needName], ['', true], 'lookup empty: the name door asks');
+book.sheets.Staff.appendRow(['blank400@c2ken.net', '', 'staff', 'yes']); directory.names['blank400@c2ken.net'] = 'B Lank';
+me = as('blank400@c2ken.net', 'whoami');
+eq([me.name, me.needName, rows('Staff').filter(r => r[0] === 'blank400@c2ken.net')[0][1]], ['B Lank', false, 'B Lank'], 'blank known row is filled from the directory');
+directory.names['newhire400@c2ken.net'] = 'Someone Else'; as('newhire400@c2ken.net', 'whoami');
+eq(rows('Staff').filter(r => r[0] === 'newhire400@c2ken.net')[0][1], 'C Hughes', 'a name already on the sheet is never overwritten');
+directory.names['nb400@c2ken.net'] = 'nb400'; eq(as('nb400@c2ken.net', 'whoami').needName, true, 'a "name" that is only the username is not a name');
+directory.refuse['refused400@c2ken.net'] = true; directory.names['later400@c2ken.net'] = 'L Ater';
+eq(as('refused400@c2ken.net', 'whoami').needName, true, 'directory refuses (as C2k does): the name door asks');
+let before = directory.calls; me = as('later400@c2ken.net', 'whoami');
+eq([directory.calls - before, me.needName], [0, true], 'after a refusal the lookup rests: no call, the door asks');
+directory.names['admin@c2ken.net'] = 'A Dmin'; before = directory.calls;
+eq([vm.runInContext("displayName('admin@c2ken.net')", ctx), directory.calls - before], ['A Dmin', 1], 'the owner is still looked up while it rests');
 
 console.log(fails ? `\n${fails} of ${n} FAILED` : `\nall ${n} passed`); process.exit(fails ? 1 : 0);

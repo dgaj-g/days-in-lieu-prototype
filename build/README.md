@@ -9,7 +9,8 @@ build/
   src/            hand-written: Code.gs (server), api-gas.js.html (browser shim), index.html (page), appsscript.json
   make.sh         builds dist/ from src/ + the prototype sources — run it after ANY change to the prototype
   dist/           the Apps Script project, one file each, ready to push. Never edit by hand.
-  test/harness.js runs dist/Code.gs in Node against fake Sheets and Mail: 67 checks through the whole story
+  probe/          the throwaway web app that proved how display names can be read on C2k (see Display names)
+  test/harness.js runs dist/Code.gs in Node against fake Sheets and Mail: 83 checks through the whole story
 ```
 
 Check before deploying:
@@ -48,11 +49,13 @@ If `clasp login` is refused ("access blocked"), C2k has not allowed the clasp OA
 4. `PRINCIPAL_EMAIL` at the top of `Code.gs` is already the Principal's address (`fmcalinden045@c2ken.net`; her
    `@ourladysgrammar.newry.ni.sch.uk` form is the same account and is folded to it). `setup` makes her an approver from
    the start, so the link opens on the approval side for her. Run the function **setup** once (Run ▸ setup). Grant the permissions it asks for:
-   see and edit this spreadsheet, send email as you, see your email address. Back in the Sheet, six tabs now exist
+   see and edit this spreadsheet, send email as you, see your email address, see info about users on your domain
+   (the directory lookup for display names). Back in the Sheet, six tabs now exist
    and **Staff** holds the deploying account and the Principal as approvers.
 5. **Staff tab**: add any staff you
    want pre-loaded (`Role` = `staff`, `Active` = `yes`). Anyone else with a `@c2ken.net` account is added
-   automatically as staff the first time they open the app and is asked for their name.
+   automatically as staff the first time they open the app. Their name comes from the directory when it answers
+   (see Display names); on C2k that is only the owner's, so everyone else types their name once.
    Roles are exclusive: an approver sees only the approval side (To decide, Decided, Overview, Staff list) and cannot
    claim or book. The Principal's own days in lieu are handled outside this app.
 6. **Config tab**: `principalName` (how sentences refer to the approver, e.g. `Mrs Smith` or `the Principal`),
@@ -65,6 +68,40 @@ If `clasp login` is refused ("access blocked"), C2k has not allowed the clasp OA
 
 To update the app later: change the prototype, `./build/make.sh`, `clasp push` (or paste again), then
 Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does not change.
+
+## Display names
+
+Proved on the real domain on 27 Sep 2026 with the throwaway web app in `probe/` (Execute as Me, Anyone within
+c2ken.net), deployed and visited by `dgartland021@c2ken.net`:
+
+| What was tried | Exact result |
+|---|---|
+| `Session.getActiveUser().getEmail()` | `dgartland021@c2ken.net` — always the c2ken.net form, lower case |
+| `Session.getEffectiveUser().getEmail()` | `dgartland021@c2ken.net` (the deployer) |
+| `AdminDirectory.Users.get(<own email>, {viewType:'domain_public', projection:'basic'})` | `name.fullName` = `D Gartland` (`givenName` `D`, `familyName` `Gartland`) |
+| the same for another member of staff (`fmcalinden045@c2ken.net`) | error `Not Authorized to access this resource/api` |
+| the same with the school-domain form (`…@ourladysgrammar.newry.ni.sch.uk`) | error `Resource Not Found: userKey` — not a directory key; fold to c2ken.net first |
+| the same for an address with no account | error `Resource Not Found: userKey` |
+| People API `listDirectoryPeople` / `searchDirectoryPeople` (scope `directory.readonly`) | 0 people, no error |
+| Drive: share a file with the address (no email), read the permission's `displayName` | `fmcalinden045` — the username, not a name |
+| OpenID `userinfo` with `ScriptApp.getOAuthToken()` | the token owner only: `"name": "D Gartland"` |
+
+**What the app does.** `displayName(email)` in `Code.gs` asks the directory (advanced service **Admin SDK
+Directory API**, `AdminDirectory`, `directory_v1`; scope `https://www.googleapis.com/auth/admin.directory.user.readonly`)
+for `name.fullName`. `whoami` uses it for a newcomer and for a known row with a blank name; a name already on the
+Staff tab is never overwritten. When it returns nothing the name door asks, exactly as before.
+
+**Failure modes, all ending at the name door:** C2k refuses other accounts (`Not Authorized`) — after one refusal the
+lookup rests for a day, trying only the owner, so visits do not wait on it; no such account (`Resource Not Found`);
+a "name" that is only the username is ignored. On C2k today this means **the owner is named automatically and
+everyone else types their name once.** If C2k central ever lets ordinary accounts read the directory, names start
+arriving with no change to the code.
+
+**The route that would name everyone, and why it is not used.** A visitor's own name is only readable with the
+visitor's own token (`userinfo`, scope `userinfo.profile`), which needs a second deployment running **Execute as
+user accessing** and a relay into this one. Every member of staff would then meet Google's "unverified app"
+consent screen before the app opened, until C2k central marks the app as trusted — a worse first minute than typing
+one name. Revisit only if C2k trusts school-built apps.
 
 ## How the Sheet holds things
 
