@@ -17,6 +17,16 @@ function doGet(e) {
       rows.push(['LOOKUP OTHER ' + addr, JSON.stringify(u.name) + ' primaryEmail=' + u.primaryEmail + ' emails=' + JSON.stringify((u.emails || []).map(function (m) { return m.address; }))]);
     } catch (e) { rows.push(['LOOKUP OTHER ' + addr, 'ERROR ' + e]); }
   });
+  // 1c. Drive: share a throwaway file with them (no email sent), read the permission's displayName, unshare.
+  q.split(',').filter(String).forEach(function (addr) {
+    try {
+      var fid = PropertiesService.getScriptProperties().getProperty('probeFile');
+      if (!fid) { fid = Drive.Files.create({ name: 'DIL name probe (safe to delete)', mimeType: 'text/plain' }).id; PropertiesService.getScriptProperties().setProperty('probeFile', fid); }
+      var perm = Drive.Permissions.create({ role: 'reader', type: 'user', emailAddress: addr }, fid, { sendNotificationEmail: false, fields: 'id,displayName,emailAddress' });
+      rows.push(['DRIVE ' + addr, 'displayName=' + JSON.stringify(perm.displayName) + ' email=' + perm.emailAddress]);
+      try { Drive.Permissions.remove(fid, perm.id); } catch (e2) { rows.push(['DRIVE remove', 'ERROR ' + e2]); }
+    } catch (e) { rows.push(['DRIVE ' + addr, 'ERROR ' + e]); }
+  });
   try { var l = People.People.listDirectoryPeople({ readMask: 'names', sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'], pageSize: 3 }); rows.push(['People.listDirectoryPeople count', String((l.people || []).length)]); } catch (e) { rows.push(['People.listDirectoryPeople', 'ERROR ' + e]); }
   // 2. People API directory search by the visitor's email
   try { var r = People.People.searchDirectoryPeople({ query: email, readMask: 'names,emailAddresses', sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'] });
