@@ -10,7 +10,7 @@ build/
   make.sh         builds dist/ from src/ + the prototype sources — run it after ANY change to the prototype
   dist/           the Apps Script project, one file each, ready to push. Never edit by hand.
   probe/          the throwaway web app that proved how display names can be read on C2k (see Display names)
-  test/harness.js runs dist/Code.gs in Node against fake Sheets and Mail: 83 checks through the whole story
+  test/harness.js runs dist/Code.gs in Node against fake Sheets and Mail: 85 checks through the whole story
 ```
 
 Check before deploying:
@@ -60,6 +60,9 @@ If `clasp login` is refused ("access blocked"), C2k has not allowed the clasp OA
    claim or book. The Principal's own days in lieu are handled outside this app.
 6. **Config tab**: `principalName` (how sentences refer to the approver, e.g. `Mrs Smith` or `the Principal`),
    `quickReasons` (the quick-fill buttons), the academic year start (1 September by default).
+   After step 8, paste the web app URL (ends `/exec`) into `appUrl`: every email links there. Left blank, an email
+   sent from a call that did not come through the live link (for example a function run in the editor) links to the
+   editor's `/dev` address, which staff cannot open.
 7. **Closures tab**: `From`, `To`, `Label` — one row per holiday or closure, dates as `YYYY-MM-DD`. These grey out
    days on the booking calendar. Add the year's holidays now; add more any time.
 8. Deploy ▸ New deployment ▸ type **Web app** ▸ Execute as **Me** ▸ Who has access **Anyone within c2ken.net** ▸ Deploy.
@@ -68,6 +71,19 @@ If `clasp login` is refused ("access blocked"), C2k has not allowed the clasp OA
 
 To update the app later: change the prototype, `./build/make.sh`, `clasp push` (or paste again), then
 Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does not change.
+
+## The live deployment (27 Sep 2026)
+
+- Web app, Version 3 (the URL never changes on a redeploy):
+  https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
+- The Sheet (dgartland021's C2k Drive; the script is bound to it):
+  https://docs.google.com/spreadsheets/d/1mlAvXuCuH5tkB4udW1HSDN2f7neqlXHXjaWdcDxfOFA/edit
+- Execute as Me (dgartland021@c2ken.net), Anyone within c2ken. Staff tab: dgartland021 and fmcalinden045, both
+  approvers. Config `appUrl` = the link above. Closures filled from the school calendar for 2026–27.
+- Tested live: a claim sent, approved, a day booked and approved; the staff emails arrived with the note and the
+  balance and link to /exec. Claims, Requests and Days were emptied afterwards.
+- Phones checked at 375 and 393 wide as staff and as the Principal; screenshots in
+  `/Users/damiengartland/Desktop/Claude Work/Days In Lieu/phone-checks/`.
 
 ## Display names
 
