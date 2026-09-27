@@ -185,6 +185,8 @@ var S = (function () {
       removeDay: function (iso) { return 'Remove ' + DIL.formatShort(iso); },
       total: function (n, left) { return n ? 'You’re booking ' + fd(n) + ' of the ' + fd(left) + ' you have left' : 'No days picked yet'; },
       overLeft: function (left) { return 'That would be more than the ' + fd(left) + ' you have left to book.'; },
+      addedHalf: function (iso, left) { return DIL.formatShort(iso) + ' added as a morning, because a full day would be more than the ' + fd(left) + ' you have left. Switch it to Afternoon below if you’d rather.'; },
+      fullWouldExceed: function (left) { return 'A full day there would be more than the ' + fd(left) + ' you have left — this one has to stay a half day.'; },
       step2: function (who) { return '2 · A note for ' + who + ' (optional)'; },
       noteLabel: function (who) { return 'Anything ' + who + ' should know?'; },
       notePlaceholder: 'e.g. Would like the Monday to travel',

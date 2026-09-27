@@ -327,15 +327,16 @@ var DILApp = (function () {
     $('#cal').innerHTML = h;
   }
   function pickedList() { return Object.keys(st.nr.picked).sort(); }
-  function pickedTotal(extraIso, portionOverride) {
+  function pickedTotal(extraIso, portionOverride, extraValue) {
     var n = st.nr, list = pickedList().map(function (iso) { return { portion: portionOverride && portionOverride.iso === iso ? portionOverride.p : n.picked[iso].portion }; });
-    if (extraIso) list.push({ portion: 'full' });
-    return DIL.total(list);
+    var t = DIL.total(list);
+    if (extraIso) t += 1; else if (extraValue) t += extraValue;
+    return Math.round(t * 2) / 2;
   }
   // The cap: a booking can never go above the days left to book (the server refuses it too, code over_balance).
   function overCap(total) { return total > st.nr.left; }
-  function addDay(iso) {
-    var n = st.nr; n.picked[iso] = { portion: 'full' };
+  function addDay(iso, portion) {
+    var n = st.nr; n.picked[iso] = { portion: portion || 'full' };
     var p = DIL.parts(iso); n.months.forEach(function (mm, i) { if (mm.y === p.y && mm.m === p.m) n.mi = i; });
     n.msg = ''; drawCalendar(); drawPicked(); drawSummary();
   }
@@ -353,7 +354,7 @@ var DILApp = (function () {
   function capMsg(el) { var m = S.newReq.overLeft(st.nr.left); if (el) { el.className = 'help bad'; el.textContent = m; } var ph = $('#picked-help'); if (ph && ph !== el) ph.textContent = m; }
   function setPortion(btn) {
     var iso = btn.dataset.iso, p = btn.dataset.p;
-    if (overCap(pickedTotal(null, { iso: iso, p: p }))) { capMsg($('#picked-help')); return; }
+    if (overCap(pickedTotal(null, { iso: iso, p: p }))) { var ph = $('#picked-help'); ph.className = 'help bad'; ph.textContent = S.newReq.fullWouldExceed(st.nr.left); return; }
     st.nr.picked[iso].portion = p; drawPicked(); drawCalendar(); drawSummary();
   }
   function drawSummary() {
@@ -376,16 +377,25 @@ var DILApp = (function () {
     if (!iso) { help.textContent = S.dateProblem.invalid; return; }
     var ctx = nrCtx(); ctx.picked = pickedList(); var p = DIL.dateProblem(iso, ctx);
     if (p) { help.textContent = S.dateProblem.describe(p); return; }
-    if (overCap(pickedTotal(iso))) { capMsg(help); return; }
-    help.className = 'help'; help.textContent = ''; inp.value = ''; addDay(iso);
+    inp.value = ''; addWithinCap(iso, help);
+  }
+  // Add a day at the largest portion that still fits the days left: a full day, else a half (morning) with a word of explanation, else refuse.
+  function addWithinCap(iso, help) {
+    if (!overCap(pickedTotal(iso))) { help.className = 'help'; help.textContent = ''; addDay(iso); return; }
+    if (!overCap(pickedTotal(null, null, 0.5))) {
+      addDay(iso, 'am');   // redraws the calendar and the picked list, so find the help lines afresh
+      var msg = S.newReq.addedHalf(iso, st.nr.left);
+      [document.getElementById(help.id), $('#picked-help')].forEach(function (el) { if (el) { el.className = 'help good'; el.textContent = msg; } });
+      return;
+    }
+    capMsg(help);
   }
   function calClick(btn) {
     var iso = btn.dataset.iso, n = st.nr, help = $('#cal-help');
     if (n.picked[iso]) { removeDay(iso); return; }
     var ctx = nrCtx(); var p = DIL.dateProblem(iso, ctx);
     if (p) { help.className = 'help bad'; help.textContent = S.dateProblem.describe(p); return; }
-    if (overCap(pickedTotal(iso))) { capMsg(help); return; }
-    help.className = 'help'; help.textContent = ''; addDay(iso);
+    addWithinCap(iso, help);
   }
   function send(btn) {
     var n = st.nr, list = pickedList();
