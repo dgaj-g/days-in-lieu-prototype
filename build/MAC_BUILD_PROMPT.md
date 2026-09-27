@@ -15,7 +15,7 @@ this Mac (you have Chrome and the school Google account here), and prove it work
 - `build/README.md` — what the build is and the deployment steps. Read it before anything else.
 - `build/src/Code.gs` — the server. `build/make.sh` assembles `build/dist/` (the ten Apps Script files) from
   `build/src/` plus the prototype. `build/test/harness.js` runs `dist/Code.gs` in Node against fake Sheets and
-  Mail: 67 checks, all passing now. `./build/make.sh && node build/test/harness.js` is the gate; keep it green.
+  Mail: 74 checks, all passing now. `./build/make.sh && node build/test/harness.js` is the gate; keep it green.
 - The live demo (prototype, mock data) is https://dgaj-g.github.io/days-in-lieu-prototype/ — the build must look
   and behave exactly like it.
 
@@ -78,8 +78,10 @@ deployment version (same URL).
 amount. Update them: a claim is `workDays` = a list of `{date, portion: full|half}`, picked on a calendar, any days
 of the academic year including weekends and closures, not necessarily consecutive, stored in one Sheet cell as
 `2026-09-19:half,2026-09-26`; `amountClaimed` is always the sum; on the booking page a day that only fits as a half
-is added as a morning with an explanation; quick reasons are Residential trip, Weekend fixture, SEAG Help; the
-display-name finding from step 1. `DIL_BUILD_PROMPT.md` is superseded by `build/` — say so at its top.
+is added as a morning with an explanation; quick reasons are Residential trip, Weekend fixture, SEAG Help; approvers
+have no My days; the Principal is fmcalinden045@c2ken.net, and every `@ourladysgrammar.newry.ni.sch.uk` address is
+the same account as its `@c2ken.net` form (both accepted everywhere, stored as c2ken.net); the display-name finding
+from step 1. `DIL_BUILD_PROMPT.md` is superseded by `build/` — say so at its top.
 
 ## Report back
 
