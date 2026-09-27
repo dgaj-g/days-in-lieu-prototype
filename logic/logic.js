@@ -40,6 +40,28 @@ var DIL = (function () {
   function formatFull(iso) { var p = parts(iso); return DAY_LONG[weekdayIndex(iso)] + ' ' + p.d + ' ' + MON_LONG[p.m - 1] + ' ' + p.y; }  // Friday 2 October 2026
   function formatMonth(y, m) { return MON_LONG[m - 1] + ' ' + y; }
   function formatUK(iso) { var p = parts(iso); return pad2(p.d) + '/' + pad2(p.m) + '/' + p.y; }
+  // A list of days, runs of consecutive days folded into ranges, the year said once when it is the same throughout.
+  // ['2026-09-04','2026-09-05','2026-09-06'] → 'Fri 4 – Sun 6 Sep 2026'
+  // ['2026-09-19','2026-09-26','2026-10-03'] → 'Sat 19 Sep, Sat 26 Sep and Sat 3 Oct 2026'
+  function formatDateList(isos) {
+    var list = (isos || []).filter(isValidISO).slice().sort(), runs = [];
+    for (var i = 0; i < list.length; i++) {
+      var last = runs[runs.length - 1];
+      if (last && addDays(last.to, 1) === list[i]) last.to = list[i]; else runs.push({ from: list[i], to: list[i] });
+    }
+    if (!runs.length) return '';
+    var oneYear = parts(runs[0].from).y === parts(runs[runs.length - 1].to).y;
+    function dm(iso) { var p = parts(iso); return DAY_SHORT[weekdayIndex(iso)] + ' ' + p.d + ' ' + MON_SHORT[p.m - 1]; }
+    var out = runs.map(function (r) {
+      var a = parts(r.from), b = parts(r.to), s;
+      if (r.from === r.to) s = dm(r.from);
+      else if (a.m === b.m && a.y === b.y) s = DAY_SHORT[weekdayIndex(r.from)] + ' ' + a.d + ' – ' + dm(r.to);
+      else s = dm(r.from) + (oneYear ? '' : ' ' + a.y) + ' – ' + dm(r.to);
+      return oneYear ? s : s + ' ' + b.y;
+    });
+    var joined = out.length === 1 ? out[0] : out.slice(0, -1).join(', ') + ' and ' + out[out.length - 1];
+    return oneYear ? joined + ' ' + parts(runs[0].from).y : joined;
+  }
 
   function formatDays(n) {
     n = Math.round(Number(n) * 2) / 2;
@@ -142,18 +164,25 @@ var DIL = (function () {
   }
 
   // Month grid for the calendar (Monday-first). Cells: {iso, day, inMonth, problem, today}
-  function monthGrid(y, m, ctx) {
+  function buildGrid(y, m, todayISO, problemFor) {
     var first = toISO(y, m, 1), lead = (weekdayIndex(first) + 6) % 7;   // Monday = 0
     var cells = [], iso = addDays(first, -lead);
     for (var i = 0; i < 42; i++) {
       var p = parts(iso), inMonth = (p.y === y && p.m === m);
-      cells.push({ iso: iso, day: p.d, inMonth: inMonth, problem: inMonth ? dateProblem(iso, ctx) : { code: 'other_month' }, today: iso === ctx.todayISO });
+      cells.push({ iso: iso, day: p.d, inMonth: inMonth, problem: inMonth ? problemFor(iso) : { code: 'other_month' }, today: iso === todayISO });
       iso = addDays(iso, 1);
     }
     if (!cells[35].inMonth) cells = cells.slice(0, 35);
     var weeks = []; for (var w = 0; w < cells.length; w += 7) weeks.push(cells.slice(w, w + 7));
     return { label: formatMonth(y, m), y: y, m: m, weeks: weeks };
   }
+  function monthGrid(y, m, ctx) { return buildGrid(y, m, ctx.todayISO, function (iso) { return dateProblem(iso, ctx); }); }
+  // The claim calendar: any day of the academic year may be picked (weekends and closures included — that is
+  // when the extra work happens). ctx: {todayISO, year}. The only problem a cell can have is date_outside_year.
+  function claimMonthGrid(y, m, ctx) {
+    return buildGrid(y, m, ctx.todayISO, function (iso) { return inYear(iso, ctx.year) ? null : { code: 'date_outside_year', year: ctx.year.label }; });
+  }
+  function claimMonths(year) { return monthRange(year.start, year.end); }
   function monthRange(windowStart, windowEnd) {
     var a = parts(windowStart), b = parts(windowEnd), out = [];
     var y = a.y, m = a.m;
@@ -271,7 +300,9 @@ var DIL = (function () {
   function firstName(name) { var n = String(name || '').trim().replace(/^(mr|mrs|ms|miss|dr|fr|sr)\.?\s+/i, ''); return n.split(/\s+/)[0] || n; }
 
   // ---------- claims (days in lieu a person says they are owed) ----------
-  // A claim: {claimId, staffEmail, staffName, submittedAt, workDate, reason, amountClaimed, amountApproved, status, decisionNote, decidedAt, decidedBy, startYear}
+  // A claim: {claimId, staffEmail, staffName, submittedAt, workDates, reason, amountClaimed, amountApproved, status, decisionNote, decidedAt, decidedBy, startYear}
+  // workDates: the days the work was on, sorted ISO strings, one or more, not necessarily consecutive (Saturday classes, say).
+  // Stored in the sheet as one cell, the dates joined with a comma.
   function isHalfStep(n) { n = Number(n); return isFinite(n) && n > 0 && Math.round(n * 2) === n * 2; }
   function nextClaimId(existingIds, year) {
     var prefix = 'CLM-' + String(year.startYear).slice(2) + pad2((year.startYear + 1) % 100) + '-', max = 0;
@@ -293,7 +324,8 @@ var DIL = (function () {
     if (isValidISO(b) && inYear(b, year)) return b;
     return iso;
   }
-  // Validate a claim as it arrives at the server. sub: {reason, workDate, amount}; ctx: {todayISO, year}.
+  // Validate a claim as it arrives at the server. sub: {reason, workDates:[iso], amount}; ctx: {todayISO, year}.
+  // Codes: no_reason · reason_too_long · bad_amount · amount_too_big · no_dates · bad_date · date_outside_year
   function validateClaim(sub, ctx) {
     var reason = String((sub && sub.reason) || '').trim();
     if (!reason) return { ok: false, code: 'no_reason' };
@@ -301,10 +333,19 @@ var DIL = (function () {
     var amount = Number(sub && sub.amount);
     if (!isHalfStep(amount)) return { ok: false, code: 'bad_amount' };
     if (amount > CLAIM_MAX) return { ok: false, code: 'amount_too_big', max: CLAIM_MAX };
-    var date = String((sub && sub.workDate) || '').trim();
-    if (!isValidISO(date)) return { ok: false, code: 'bad_date' };
-    if (!inYear(date, ctx.year)) return { ok: false, code: 'date_outside_year', year: ctx.year.label };
-    return { ok: true, claim: { reason: reason, workDate: date, amount: amount } };
+    var raw = sub && sub.workDates;
+    if (typeof raw === 'string') raw = raw.split(',');
+    if (!raw || !raw.length) return { ok: false, code: 'no_dates' };
+    var dates = [];
+    for (var i = 0; i < raw.length; i++) {
+      var d = String(raw[i] || '').trim(); if (!d) continue;
+      if (!isValidISO(d)) return { ok: false, code: 'bad_date' };
+      if (!inYear(d, ctx.year)) return { ok: false, code: 'date_outside_year', year: ctx.year.label };
+      if (dates.indexOf(d) < 0) dates.push(d);
+    }
+    if (!dates.length) return { ok: false, code: 'no_dates' };
+    dates.sort();
+    return { ok: true, claim: { reason: reason, workDates: dates, amount: amount } };
   }
   // The Principal's decision on a claim. decision: {approve: true|false, amount (days approved; blank = all), note}.
   // Fewer days than claimed and a decline both NEED a note (it goes in the email). Never above the amount claimed, never zero (that is a decline).
@@ -426,10 +467,10 @@ var DIL = (function () {
   return {
     PORTIONS: PORTIONS, DAY_STATUSES: DAY_STATUSES, CLAIM_STATUSES: CLAIM_STATUSES, CLAIM_MAX: CLAIM_MAX, DAY_SHORT: DAY_SHORT, DAY_LONG: DAY_LONG, MON_SHORT: MON_SHORT, MON_LONG: MON_LONG,
     toISO: toISO, parts: parts, isValidISO: isValidISO, addDays: addDays, daysBetween: daysBetween, weekdayIndex: weekdayIndex, isWeekend: isWeekend, todayISO: todayISO,
-    formatLong: formatLong, formatShort: formatShort, formatFull: formatFull, formatMonth: formatMonth, formatUK: formatUK, formatDays: formatDays,
+    formatLong: formatLong, formatShort: formatShort, formatFull: formatFull, formatMonth: formatMonth, formatUK: formatUK, formatDays: formatDays, formatDateList: formatDateList,
     portionValue: portionValue, total: total,
     yearBounds: yearBounds, academicYearOf: academicYearOf, currentYear: currentYear, requestWindow: requestWindow, inYear: inYear,
-    parseTypedDate: parseTypedDate, dateProblem: dateProblem, closureFor: closureFor, monthGrid: monthGrid, monthRange: monthRange,
+    parseTypedDate: parseTypedDate, dateProblem: dateProblem, closureFor: closureFor, monthGrid: monthGrid, monthRange: monthRange, claimMonthGrid: claimMonthGrid, claimMonths: claimMonths,
     nextRequestId: nextRequestId, requestStatus: requestStatus, validateSubmission: validateSubmission, applyDecision: applyDecision, joinWords: joinWords, canWithdraw: canWithdraw, canCancelDay: canCancelDay,
     isHalfStep: isHalfStep, nextClaimId: nextClaimId, parseClaimDate: parseClaimDate, validateClaim: validateClaim, applyClaimDecision: applyClaimDecision, canWithdrawClaim: canWithdrawClaim, balance: balance, canReduceClaim: canReduceClaim,
     norm: norm, findStaff: findStaff, isOnList: isOnList, registerVisitor: registerVisitor, roleFor: roleFor, approvers: approvers, firstName: firstName,

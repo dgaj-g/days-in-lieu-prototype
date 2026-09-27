@@ -5,7 +5,7 @@ window.DIL_API = (function () {
   'use strict';
   var TODAY = '2026-09-17', APP_URL = 'https://script.google.com/a/macros/c2ken.net/s/EXAMPLE/exec';
   var cfg = { yearStartMonth: 9, yearStartDay: 1, yearOverride: '', nextYearOpens: '', principalName: 'the Principal',
-              quickReasons: ['Residential trip', 'Open night', 'Parents’ evening', 'Weekend fixture', 'SEAG Help', 'Exam trip'] };
+              quickReasons: ['Residential trip', 'Weekend fixture', 'SEAG Help'] };
   var staff = [
     { email: 'dgartland021@c2ken.net', name: 'Damien Gartland', role: 'staff', active: 'yes' },
     { email: 'chughes400@c2ken.net', name: 'Claire Hughes', role: 'staff', active: 'yes' },
@@ -25,29 +25,29 @@ window.DIL_API = (function () {
   var P = 'principal001@c2ken.net';
   // ---------- CLAIMS (the Claims tab) ----------
   var claims = [];
-  function claim(email, submitted, workDate, reason, amount, status, approved, note) {
+  function claim(email, submitted, workDates, reason, amount, status, approved, note) {
     var year = DIL.academicYearOf(submitted, cfg), s = DIL.findStaff(email, staff);
-    var c = { claimId: DIL.nextClaimId(claims.map(function (x) { return x.claimId; }), year), staffEmail: email, staffName: s.name, submittedAt: submitted, workDate: workDate, reason: reason,
+    var c = { claimId: DIL.nextClaimId(claims.map(function (x) { return x.claimId; }), year), staffEmail: email, staffName: s.name, submittedAt: submitted, workDates: workDates.slice().sort(), reason: reason,
               amountClaimed: amount, amountApproved: status === 'pending' || status === 'declined' || status === 'withdrawn' ? 0 : (approved === undefined ? amount : approved),
               status: status, decisionNote: note || '', decidedAt: status === 'pending' || status === 'withdrawn' ? '' : DIL.addDays(submitted, 1), decidedBy: status === 'pending' || status === 'withdrawn' ? '' : P, startYear: year.startYear };
     claims.push(c); return c;
   }
   // Damien: last year, then this year (approved 3 + ½ + 3 = 6½; 1 awaiting; 1 not approved)
-  claim('dgartland021@c2ken.net', '2026-02-09', '2026-02-06', 'Year 8 residential, Fri 6 to Sat 7 February', 1.5, 'approved');
-  claim('dgartland021@c2ken.net', '2026-09-07', '2026-09-04', 'Year 10 residential, Fri 4 to Sun 6 September', 3, 'approved');
-  claim('dgartland021@c2ken.net', '2026-09-09', '2026-09-08', 'Open night, Tue 8 September', 1, 'partly', 0.5, 'Open night is a half day in lieu, as agreed at the staff meeting.');
-  claim('dgartland021@c2ken.net', '2026-09-14', '2026-09-19', 'SEAG Help — Saturday classes 19 and 26 September, 3 October', 3, 'approved');
-  claim('dgartland021@c2ken.net', '2026-09-16', '2026-09-12', 'Senior netball final, Sat 12 September', 1, 'pending');
-  claim('dgartland021@c2ken.net', '2026-09-11', '2026-09-11', 'Exam trip, Fri 11 September', 1, 'declined', 0, 'Exam trips during the school day are not in lieu.');
+  claim('dgartland021@c2ken.net', '2026-02-09', ['2026-02-06', '2026-02-07'], 'Year 8 residential', 1.5, 'approved');
+  claim('dgartland021@c2ken.net', '2026-09-07', ['2026-09-04', '2026-09-05', '2026-09-06'], 'Year 10 residential', 3, 'approved');
+  claim('dgartland021@c2ken.net', '2026-09-09', ['2026-09-08'], 'Open night', 1, 'partly', 0.5, 'Open night is a half day in lieu, as agreed at the staff meeting.');
+  claim('dgartland021@c2ken.net', '2026-09-14', ['2026-09-19', '2026-09-26', '2026-10-03'], 'SEAG Help — Saturday classes', 3, 'approved');
+  claim('dgartland021@c2ken.net', '2026-09-16', ['2026-09-12'], 'Senior netball final', 1, 'pending');
+  claim('dgartland021@c2ken.net', '2026-09-11', ['2026-09-11'], 'Exam trip', 1, 'declined', 0, 'Exam trips during the school day are not in lieu.');
   // Claire: 3 approved, ½ awaiting
-  claim('chughes400@c2ken.net', '2026-09-13', '2026-09-10', 'Year 12 geography field trip, Thu 10 to Sat 12 September', 3, 'approved');
-  claim('chughes400@c2ken.net', '2026-09-15', '2026-09-24', 'Parents’ evening, Thu 24 September', 0.5, 'pending');
+  claim('chughes400@c2ken.net', '2026-09-13', ['2026-09-10', '2026-09-11', '2026-09-12'], 'Year 12 geography field trip', 3, 'approved');
+  claim('chughes400@c2ken.net', '2026-09-15', ['2026-09-24'], 'Parents’ evening', 0.5, 'pending');
   // Peter: 2 approved, 1 awaiting
-  claim('pmorgan212@c2ken.net', '2026-09-03', '2026-09-05', 'Weekend fixture, Sat 5 September', 1, 'approved');
-  claim('pmorgan212@c2ken.net', '2026-09-11', '2026-09-10', 'Open night, Thu 10 September', 1, 'approved');
-  claim('pmorgan212@c2ken.net', '2026-09-16', '2026-09-19', 'SEAG Help, Sat 19 September', 1, 'pending');
+  claim('pmorgan212@c2ken.net', '2026-09-03', ['2026-09-05'], 'Weekend fixture — senior hurling', 1, 'approved');
+  claim('pmorgan212@c2ken.net', '2026-09-11', ['2026-09-10'], 'Open night', 1, 'approved');
+  claim('pmorgan212@c2ken.net', '2026-09-16', ['2026-09-19'], 'SEAG Help', 1, 'pending');
   // Aoife: 2 approved, all booked
-  claim('aburns118@c2ken.net', '2026-09-01', '2026-09-05', 'Gaelic blitz, Sat 5 September', 2, 'approved');
+  claim('aburns118@c2ken.net', '2026-09-01', ['2026-09-05', '2026-09-06'], 'Gaelic blitz weekend', 2, 'approved');
 
   // ---------- BOOKINGS (the Requests + Days tabs) ----------
   var requests = [], days = [];
@@ -116,8 +116,8 @@ window.DIL_API = (function () {
     // ----- staff: claims -----
     submitClaim: function (sub) { return wait().then(function () { need('staff'); var s = me(), year = DIL.currentYear(TODAY, cfg); if (!s.name) return { ok: false, code: 'need_name' };
       var v = DIL.validateClaim(sub, { todayISO: TODAY, year: year }); if (!v.ok) return v;
-      var c = { claimId: DIL.nextClaimId(claims.map(function (x) { return x.claimId; }), year), staffEmail: viewer.email, staffName: s.name, submittedAt: TODAY, workDate: v.claim.workDate, reason: v.claim.reason, amountClaimed: v.claim.amount, amountApproved: 0, status: 'pending', decisionNote: '', decidedAt: '', decidedBy: '', startYear: year.startYear };
-      claims.push(c); console.log('[mock email → approvers]', S.email.newClaim({ staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDate: c.workDate, url: APP_URL + '?c=' + c.claimId }).subject);
+      var c = { claimId: DIL.nextClaimId(claims.map(function (x) { return x.claimId; }), year), staffEmail: viewer.email, staffName: s.name, submittedAt: TODAY, workDates: v.claim.workDates, reason: v.claim.reason, amountClaimed: v.claim.amount, amountApproved: 0, status: 'pending', decisionNote: '', decidedAt: '', decidedBy: '', startYear: year.startYear };
+      claims.push(c); console.log('[mock email → approvers]', S.email.newClaim({ staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDates: c.workDates, url: APP_URL + '?c=' + c.claimId }).subject);
       return { ok: true, claim: claimView(c), balance: balanceOf(viewer.email, year) }; }); },
     withdrawClaim: function (id) { return wait().then(function () { need('staff'); var c = claims.filter(function (x) { return x.claimId === id && x.staffEmail === viewer.email; })[0]; if (!c) return { ok: false, code: 'not_found' };
       if (!DIL.canWithdrawClaim(c)) return { ok: false, code: 'not_pending', claim: claimView(c) };

@@ -76,7 +76,7 @@ var DILApp = (function () {
   function setBadge(n) { st.badge = n; var b = $('#badge'); if (b) { b.textContent = S.nav.queueBadge(n); b.hidden = !n; } }
   function unsaved(tab) {
     if (st.tab === 'book' && tab !== 'book' && st.nr && !st.nr.sent && Object.keys(st.nr.picked).length && !st.nr.leaveOK) return S.newReq.leaveConfirm;
-    if (st.tab === 'claim' && tab !== 'claim' && st.cl && !st.cl.sent && (st.cl.reason.trim() || st.cl.dateText.trim()) && !st.cl.leaveOK) return S.claim.leaveConfirm;
+    if (st.tab === 'claim' && tab !== 'claim' && st.cl && !st.cl.sent && (st.cl.reason.trim() || Object.keys(st.cl.picked).length) && !st.cl.leaveOK) return S.claim.leaveConfirm;
     return '';
   }
   function go(tab) {
@@ -205,44 +205,76 @@ var DILApp = (function () {
 
   /* ---------- Claim days (staff) ---------- */
   function renderClaim() {
-    var m = $('#main'), C = S.claim, year = st.me.year, quick = (st.me.cfg && st.me.cfg.quickReasons) || [];
-    st.cl = { reason: '', dateText: '', dateISO: null, amount: 1, sent: false, msg: '' };
+    var m = $('#main'), C = S.claim, year = st.me.year, quick = (st.me.cfg && st.me.cfg.quickReasons) || [], t = DIL.parts(st.me.today);
+    // picked: the days the work was on, ISO → true. amountTouched: once the person moves the stepper it stops following the count of days.
+    st.cl = { reason: '', picked: {}, months: DIL.claimMonths(year), mi: 0, amount: 1, amountTouched: false, sent: false, msg: '' };
+    st.cl.months.forEach(function (mm, i) { if (mm.y === t.y && mm.m === t.m) st.cl.mi = i; });
     var h = pageHead(C.title, C.sub(year.label, who())) + '<div class="two"><div>';
     h += '<div class="card"><div class="step">' + esc(C.step1) + '</div><label class="f" for="cl-reason">' + esc(C.reasonLabel) + '</label><textarea id="cl-reason" data-act="cl-reason" placeholder="' + esc(C.reasonPlaceholder) + '"></textarea>' +
       (quick.length ? '<div class="chips"><span class="lbl">' + esc(C.quickFill) + '</span>' + quick.map(function (q) { return '<button type="button" data-act="cl-quick" data-q="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div>' : '') + '</div>';
-    h += '<div class="card"><div class="step">' + esc(C.step2) + '</div><label class="f" for="cl-date">' + esc(C.dateLabel) + '</label><input type="text" id="cl-date" data-act="cl-date" placeholder="' + esc(C.datePlaceholder) + '" autocomplete="off" style="max-width:320px"><div class="help" id="cl-date-help">' + esc(C.dateHelp(year.label)) + '</div></div>';
+    h += '<div class="card"><div class="step">' + esc(C.step2) + '</div><p class="muted small" style="margin:0 0 6px">' + esc(C.dateLabel) + '</p><div id="cl-cal"></div><div class="cl-picked" id="cl-picked"></div><div class="help" id="cl-date-help">' + esc(C.dateHelp(year.label)) + '</div></div>';
     h += '<div class="card"><div class="step">' + esc(C.step3) + '</div><label class="f">' + esc(C.amountLabel) + '</label>' + stepper('cl-stepper', st.cl.amount, 0.5, DIL.CLAIM_MAX, C.less, C.more, 'cl-less', 'cl-more', '') + '<div class="help">' + esc(C.amountHelp) + '</div></div>';
     h += '</div><div class="sticky"><div class="card summary"><div class="step">' + esc(C.summaryTitle) + '</div><div id="cl-summary"></div></div></div></div>';
-    m.innerHTML = h; drawClaimSummary(); $('#cl-reason').focus();
+    m.innerHTML = h; drawClaimCal(); drawClaimPicked(); drawClaimSummary(); $('#cl-reason').focus();
   }
+  function claimDates() { return Object.keys(st.cl.picked).sort(); }
+  function drawClaimCal() {
+    var c = st.cl, mm = c.months[c.mi], g = DIL.claimMonthGrid(mm.y, mm.m, { todayISO: st.me.today, year: st.me.year }), C = S.claim, L = C.calendarLegend;
+    var h = '<div class="cal-head"><button type="button" class="btn quiet sm" data-act="ccal-prev"' + (c.mi === 0 ? ' disabled' : '') + ' aria-label="' + esc(C.prevMonth) + '">←</button><b>' + esc(g.label) + '</b><button type="button" class="btn quiet sm" data-act="ccal-next"' + (c.mi === c.months.length - 1 ? ' disabled' : '') + ' aria-label="' + esc(C.nextMonth) + '">→</button></div><div class="cal">';
+    h += DIL.DAY_SHORT.slice(1).concat(DIL.DAY_SHORT.slice(0, 1)).map(function (d) { return '<div class="wd">' + esc(d) + '</div>'; }).join('');
+    g.weeks.forEach(function (w) { w.forEach(function (cell) {
+      var cls = ['day'], title = '';
+      if (!cell.inMonth) cls.push('other');
+      else if (c.picked[cell.iso]) cls.push('picked');
+      else if (cell.problem) { cls.push('off'); title = S.claimProblem.describe(cell.problem); }
+      if (cell.today) cls.push('today');
+      h += '<button type="button" class="' + cls.join(' ') + '" data-act="ccal-day" data-iso="' + cell.iso + '"' + (title ? ' title="' + esc(title) + '"' : '') + (cell.inMonth ? '' : ' tabindex="-1"') + ' aria-pressed="' + (c.picked[cell.iso] ? 'true' : 'false') + '">' + cell.day + '</button>';
+    }); });
+    h += '</div><div class="legend"><span><i style="background:var(--navy)"></i>' + esc(L.picked) + '</span><span><i style="box-shadow:inset 0 0 0 2px var(--gold);background:#fff"></i>' + esc(L.today) + '</span></div>';
+    $('#cl-cal').innerHTML = h;
+  }
+  function drawClaimPicked() {
+    var list = claimDates(), C = S.claim, el = $('#cl-picked'); if (!el) return;
+    if (!list.length) { el.innerHTML = '<span class="lbl">' + esc(C.pickedLabel) + '</span><span class="none">' + esc(C.pickedNone) + '</span>'; return; }
+    el.innerHTML = '<span class="lbl">' + esc(C.pickedLabel) + '</span>' + list.map(function (iso) { return '<span class="pick">' + esc(DIL.formatLong(iso)) + '<button type="button" data-act="ccal-remove" data-iso="' + iso + '" aria-label="' + esc(C.removeDay(iso)) + '">×</button></span>'; }).join('');
+  }
+  function claimCalClick(btn) {
+    var iso = btn.dataset.iso, c = st.cl, help = $('#cl-date-help');
+    if (c.picked[iso]) { delete c.picked[iso]; }
+    else {
+      if (!DIL.inYear(iso, st.me.year)) { help.className = 'help bad'; help.textContent = S.claimProblem.date_outside_year({ year: st.me.year.label }); return; }
+      c.picked[iso] = true;
+      var p = DIL.parts(iso); c.months.forEach(function (mm, i) { if (mm.y === p.y && mm.m === p.m) c.mi = i; });
+    }
+    help.className = 'help'; help.textContent = S.claim.dateHelp(st.me.year.label);
+    claimDatesChanged();
+  }
+  // The amount follows the number of days picked (one day in lieu per day of work) until the person changes it themselves.
+  function claimDatesChanged() {
+    var c = st.cl, n = claimDates().length;
+    if (!c.amountTouched && n > 0) c.amount = Math.min(n, DIL.CLAIM_MAX);
+    if (n > 0 && c.msg && c.msg !== S.claim.needReason) setClaimMsg('');
+    drawClaimCal(); drawClaimPicked(); drawClaimStepper(); drawClaimSummary();
+  }
+  function drawClaimStepper() { var el = $('#cl-stepper'); if (el) el.outerHTML = stepper('cl-stepper', st.cl.amount, 0.5, DIL.CLAIM_MAX, S.claim.less, S.claim.more, 'cl-less', 'cl-more', ''); }
   function drawClaimSummary() {
-    var c = st.cl, box = $('#cl-summary'), C = S.claim; if (!box || c.sent) return;
+    var c = st.cl, box = $('#cl-summary'), C = S.claim, dates = claimDates(); if (!box || c.sent) return;
     var h = '<div class="total">' + esc(C.total(c.amount)) + '</div>';
-    if (c.reason.trim() || c.dateISO) h += '<div class="reason"><b>' + esc(C.summaryWhat) + '</b>' + (c.reason.trim() ? esc(c.reason.trim()) : '<span class="muted">—</span>') + '</div><div class="reason"><b>' + esc(C.summaryWhen) + '</b>' + (c.dateISO ? esc(DIL.formatFull(c.dateISO)) : '<span class="muted">—</span>') + '</div>';
+    if (c.reason.trim() || dates.length) h += '<div class="reason"><b>' + esc(C.summaryWhat) + '</b>' + (c.reason.trim() ? esc(c.reason.trim()) : '<span class="muted">—</span>') + '</div><div class="reason"><b>' + esc(C.summaryWhen) + '</b>' + (dates.length ? esc(DIL.formatDateList(dates)) : '<span class="muted">—</span>') + '</div>';
     else h += '<p class="empty">' + esc(C.summaryEmpty) + '</p>';
     h += '<p style="margin:16px 0 0"><button class="btn primary lg" data-act="cl-send" style="width:100%;justify-content:center">' + esc(C.send(who())) + '</button></p><div class="inline-msg bad" id="cl-msg">' + esc(c.msg || '') + '</div>';
     box.innerHTML = h;
   }
   function setClaimMsg(t) { st.cl.msg = t; var el = $('#cl-msg'); if (el) el.textContent = t; }
-  function claimDateInput(text) {
-    var c = st.cl, help = $('#cl-date-help'); c.dateText = text;
-    var iso = text.trim() ? DIL.parseClaimDate(text, { todayISO: st.me.today, year: st.me.year }) : null;
-    c.dateISO = iso;
-    if (!text.trim()) { help.className = 'help'; help.textContent = S.claim.dateHelp(st.me.year.label); }
-    else if (!iso) { help.className = 'help bad'; help.textContent = S.claimProblem.bad_date; }
-    else if (!DIL.inYear(iso, st.me.year)) { help.className = 'help bad'; help.textContent = S.claimProblem.date_outside_year({ year: st.me.year.label }); c.dateISO = null; }
-    else { help.className = 'help good'; help.textContent = S.claim.dateIs(iso); if (c.msg && c.msg !== S.claimProblem.no_reason) setClaimMsg(''); }
-    drawClaimSummary();
-  }
   function claimStep(delta) {
     var c = st.cl, next = Math.round((c.amount + delta) * 2) / 2; if (next < 0.5 || next > DIL.CLAIM_MAX) return;
-    c.amount = next; $('#cl-stepper').outerHTML = stepper('cl-stepper', c.amount, 0.5, DIL.CLAIM_MAX, S.claim.less, S.claim.more, 'cl-less', 'cl-more', ''); drawClaimSummary();
+    c.amount = next; c.amountTouched = true; drawClaimStepper(); drawClaimSummary();
   }
   function sendClaim(btn) {
-    var c = st.cl;
+    var c = st.cl, dates = claimDates();
     if (!c.reason.trim()) { setClaimMsg(S.claim.needReason); $('#cl-reason').focus(); return; }
-    if (!c.dateISO) { setClaimMsg(c.dateText.trim() ? S.claimProblem.describe({ code: 'bad_date' }) : S.claim.needDate); $('#cl-date').focus(); return; }
-    var sub = { reason: c.reason.trim(), workDate: c.dateISO, amount: c.amount };
+    if (!dates.length) { setClaimMsg(S.claim.needDate); var first = $('#cl-cal button.day:not(.other):not(.off)'); if (first) first.focus(); return; }
+    var sub = { reason: c.reason.trim(), workDates: dates, amount: c.amount };
     var v = DIL.validateClaim(sub, { todayISO: st.me.today, year: st.me.year });
     if (!v.ok) { setClaimMsg(S.claimProblem.describe(v)); return; }
     setClaimMsg(''); busy(btn, S.claim.sending);
@@ -398,11 +430,12 @@ var DILApp = (function () {
     }).catch(function () { if (st.tab === 'queue') m.innerHTML = errorCard(); });
   }
   function yearLine(first, b) { return b ? '<div class="yr">' + esc(S.queue.yearSoFar(first, b.approved, b.booked, b.pending, b.left)) + '</div>' : ''; }
+  function claimWhatWhen(k) { var Q = S.claimQ; return '<div class="reason"><b>' + esc(Q.what) + '</b>' + esc(k.reason) + '</div><div class="reason when"><b>' + esc(Q.when) + '</b>' + esc(DIL.formatDateList(k.workDates)) + '</div>'; }
   // ----- a claim card -----
   function claimCard(k, change) {
     var cs = st.c[k.claimId], first = DIL.firstName(k.staffName), Q = S.claimQ;
     var h = '<div class="card qcard ccard" data-id="' + esc(k.claimId) + '"><div class="top"><div><div class="name">' + esc(k.staffName) + '</div><div class="meta">' + esc(Q.claims(k.amountClaimed) + ' · ' + Q.sent(k.submittedAt)) + '</div></div>' + (change ? claimChip(k) : '') + '</div>';
-    h += '<div class="reason"><b>' + esc(Q.what) + '</b>' + esc(k.reason) + '</div><div class="reason when"><b>' + esc(Q.when) + '</b>' + esc(DIL.formatFull(k.workDate)) + '</div>';
+    h += claimWhatWhen(k);
     h += yearLine(first, k.balance);
     if (change) h += '<p class="inline-msg" style="color:#8A6A0C">' + esc(Q.changeWarning) + '</p>';
     h += '<div class="cdecide" id="cd-' + esc(k.claimId) + '">' + claimDecision(k.claimId) + '</div>';
@@ -555,7 +588,7 @@ var DILApp = (function () {
   }
   function decidedClaimCard(k) {
     var Q = S.claimQ, h = '<div class="card req claim" data-id="' + esc(k.claimId) + '"><div class="top"><div><span class="t">' + esc(k.staffName) + '</span> <span class="m">· ' + esc(Q.claims(k.amountClaimed) + ' · ' + Q.sent(k.submittedAt)) + '</span></div>' + claimChip(k) + '</div>';
-    h += '<div class="reason"><b>' + esc(Q.what) + '</b>' + esc(k.reason) + '</div><div class="reason when"><b>' + esc(Q.when) + '</b>' + esc(DIL.formatFull(k.workDate)) + '</div>';
+    h += claimWhatWhen(k);
     if (k.decisionNote) h += '<div class="note"><b>' + esc(S.decided.note) + '</b>' + esc(k.decisionNote) + '</div>';
     if (k.decidedAt) h += '<p class="muted small" style="margin:8px 0 0">' + esc(S.decided.decidedBy(k.decidedByName, k.decidedAt)) + '</p>';
     if (k.status !== 'withdrawn' && k.startYear === st.me.year.startYear) h += '<div class="actions"><button class="btn sm" data-act="cchange">' + esc(S.decided.change) + '</button></div>';
@@ -680,10 +713,14 @@ var DILApp = (function () {
       case 'cancel-ask': askCancel(t); break;
       case 'cancel-yes': doCancel(t); break;
       case 'cancel-no': renderDashboard(); break;
-      case 'cl-quick': st.cl.reason = t.dataset.q; $('#cl-reason').value = t.dataset.q; drawClaimSummary(); $('#cl-date').focus(); break;
+      case 'cl-quick': st.cl.reason = t.dataset.q; $('#cl-reason').value = t.dataset.q; if (st.cl.msg === S.claim.needReason) setClaimMsg(''); drawClaimSummary(); $('#cl-reason').focus(); break;
       case 'cl-less': claimStep(-0.5); break;
       case 'cl-more': claimStep(0.5); break;
       case 'cl-send': sendClaim(t); break;
+      case 'ccal-prev': st.cl.mi--; drawClaimCal(); break;
+      case 'ccal-next': st.cl.mi++; drawClaimCal(); break;
+      case 'ccal-day': claimCalClick(t); break;
+      case 'ccal-remove': delete st.cl.picked[t.dataset.iso]; claimDatesChanged(); break;
       case 'cal-prev': st.nr.mi--; drawCalendar(); break;
       case 'cal-next': st.nr.mi++; drawCalendar(); break;
       case 'cal-day': calClick(t); break;
@@ -721,8 +758,7 @@ var DILApp = (function () {
   function onInput(e) {
     var t = e.target, act = t.dataset && t.dataset.act; if (!act) return;
     if (act === 'reason') { st.nr.reason = t.value; drawSummary(); }
-    else if (act === 'cl-reason') { st.cl.reason = t.value; drawClaimSummary(); if (t.value.trim()) setClaimMsg(''); }
-    else if (act === 'cl-date') { claimDateInput(t.value); }
+    else if (act === 'cl-reason') { st.cl.reason = t.value; drawClaimSummary(); if (t.value.trim() && st.cl.msg === S.claim.needReason) setClaimMsg(''); }
     else if (act === 'note') { var card = t.closest('.qcard'); st.q[card.dataset.id].note = t.value; }
     else if (act === 'cnote') { var cc = t.closest('.ccard'); st.c[cc.dataset.id].note = t.value; if (t.value.trim()) $('#cmsg-' + CSS.escape(cc.dataset.id)).textContent = ''; }
     else if (act === 'daynote') { var qc = t.closest('.qcard'), qs2 = st.q[qc.dataset.id]; if (t.dataset.shared) qs2.why = t.value; else qs2.own[t.dataset.day] = t.value; if (t.value.trim()) $('#msg-' + CSS.escape(qc.dataset.id)).textContent = ''; }
@@ -734,7 +770,6 @@ var DILApp = (function () {
   function onKey(e) {
     if (e.key !== 'Enter') return;
     if (e.target.id === 'typed') { e.preventDefault(); typedAdd(); }
-    else if (e.target.id === 'cl-date') { e.preventDefault(); }
     else if (e.target.id === 'door-name') { e.preventDefault(); doorName($('[data-act=door-name]')); }
     else if (e.target.id === 'my-name') { e.preventDefault(); nameSave($('[data-act=name-save]')); }
   }

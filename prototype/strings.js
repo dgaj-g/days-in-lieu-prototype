@@ -71,7 +71,7 @@ var S = (function () {
         claim: {
           eyebrow: '1 · Claim',
           title: 'Claim days I’m owed',
-          body: function (who) { return 'Tell ' + who + ' about extra work you did — a trip, an open night, SEAG Help — and how many days in lieu it earned. Nothing can be booked until ' + who + ' approves the claim.'; },
+          body: function (who) { return 'Tell ' + who + ' about extra work you did — a residential trip, a weekend fixture, SEAG Help — and how many days in lieu it earned. Nothing can be booked until ' + who + ' approves the claim.'; },
           button: 'Claim days'
         },
         book: {
@@ -96,7 +96,7 @@ var S = (function () {
       claims: 'Your claims this year',
       claimsEmpty: 'You haven’t claimed any days this year.',
       claimsEmptyPast: 'No claims were made this year.',
-      claimMeta: function (c) { return fd(c.amountClaimed) + ' for ' + DIL.formatLong(c.workDate) + ' · sent ' + DIL.formatShort(c.submittedAt); },
+      claimMeta: function (c) { return fd(c.amountClaimed) + ' for ' + DIL.formatDateList(c.workDates) + ' · sent ' + DIL.formatShort(c.submittedAt); },
       withdrawClaim: 'Withdraw claim',
       withdrawClaimConfirm: function (who) { return 'Withdraw this claim? ' + cap(who) + ' will be emailed.'; },
       withdrawClaimYes: 'Withdraw', claimWithdrawn: 'Claim withdrawn.',
@@ -130,13 +130,16 @@ var S = (function () {
       reasonPlaceholder: 'e.g. Year 10 residential, Friday 4 to Sunday 6 September',
       quickFill: 'Quick fill',
       step2: '2 · When was it?',
-      dateLabel: 'Date of the work (the first day, if it ran over several)',
-      datePlaceholder: 'e.g. 4/9/2026 or 4 Sept',
-      dateHelp: function (yearLabel) { return 'A day in ' + yearLabel + '. Days in lieu don’t carry over, so work from an earlier year can’t be claimed.'; },
-      dateIs: function (iso) { return DIL.formatFull(iso); },
+      dateLabel: 'Tap every day the work was on. They needn’t be together — three Saturdays is fine.',
+      dateHelp: function (yearLabel) { return 'Days in ' + yearLabel + ' only. Days in lieu don’t carry over, so work from an earlier year can’t be claimed.'; },
+      pickedLabel: 'Days picked',
+      pickedNone: 'No days picked yet.',
+      removeDay: function (iso) { return 'Remove ' + DIL.formatLong(iso); },
+      prevMonth: 'Earlier month', nextMonth: 'Later month',
+      calendarLegend: { picked: 'Picked', today: 'Today' },
       step3: '3 · How many days?',
       amountLabel: 'Days in lieu this earned',
-      amountHelp: 'Half days are fine.',
+      amountHelp: 'Half days are fine. It starts at one for each day you picked — change it if the work earned more or less.',
       less: 'Half a day fewer', more: 'Half a day more',
       summaryTitle: 'Your claim',
       total: function (n) { return 'You’re claiming ' + fd(n); },
@@ -145,7 +148,7 @@ var S = (function () {
       send: function (who) { return 'Send to ' + who; },
       sending: 'Sending…',
       needReason: 'Say what you did first.',
-      needDate: 'Add the date of the work first.',
+      needDate: 'Pick the day, or days, the work was on first.',
       sentTitle: 'Claim sent',
       sentBody: function (who) { return cap(who) + ' has been emailed. Once the claim is approved you can book the days.'; },
       backToDays: 'Back to my days',
@@ -156,7 +159,8 @@ var S = (function () {
       reason_too_long: 'Keep it under 500 characters.',
       bad_amount: 'Days must be a whole or half number, at least ½.',
       amount_too_big: function (p) { return 'One claim can be for at most ' + fd(p.max || 15) + '. Split it into two.'; },
-      bad_date: 'That isn’t a date I recognise. Try 4/9/2026 or 4 Sept.',
+      no_dates: 'Pick the day, or days, the work was on first.',
+      bad_date: 'One of those days isn’t a real date. Pick the days again.',
       date_outside_year: function (p) { return 'That day isn’t in ' + p.year + '. Days in lieu don’t carry over from an earlier year.'; },
       describe: function (p) { var m = S.claimProblem[p.code]; return typeof m === 'function' ? m(p) : (m || S.claimProblem.bad_date); }
     },
@@ -219,7 +223,7 @@ var S = (function () {
     claimQ: {
       claims: function (amount) { return 'Claims ' + fd(amount); },
       sent: function (iso) { return 'sent ' + DIL.formatLong(iso); },
-      what: 'What', when: 'Date of the work',
+      what: 'What', when: 'Days of the work',
       yearSoFar: function (first, approved, booked, pending, left) { return first + ' this year: ' + fd(approved) + ' approved · ' + fd(booked) + ' booked · ' + (pending > 0 ? fd(pending) + ' awaiting decision · ' : '') + fd(left) + ' left to book'; },
       choose: { approve: 'Approve', decline: 'Not approved' },
       amountLabel: 'Days to approve',
@@ -356,11 +360,11 @@ var S = (function () {
       balanceLine: function (yearLabel, b) { return 'Days in lieu for ' + yearLabel + ': ' + fd(b.approved) + ' approved, ' + fd(b.booked) + ' booked, ' + fd(b.left) + ' left to book.'; },
       wrap: function (parts) { return parts.filter(Boolean).join('\n\n') + '\n\n— ' + S.email.footer; },
       wrapHtml: function (parts) { return parts.filter(Boolean).join('') + '<p style="color:#707070">— ' + esc(S.email.footer) + '</p>'; },
-      newClaim: function (c) { // {staffName, amount, reason, workDate, url}
+      newClaim: function (c) { // {staffName, amount, reason, workDates, url}
         return {
           subject: 'Days in lieu: ' + c.staffName + ' claims ' + fd(c.amount),
-          text: S.email.wrap([c.staffName + ' says they earned ' + fd(c.amount) + ' in lieu.', 'What: ' + c.reason + '\nWhen: ' + DIL.formatLong(c.workDate), 'Open the claim to approve or decline:\n' + c.url]),
-          html: S.email.wrapHtml(['<p><strong>' + esc(c.staffName) + '</strong> says they earned <strong>' + esc(fd(c.amount)) + '</strong> in lieu.</p>', '<p><strong>What:</strong> ' + esc(c.reason).replace(/\n/g, '<br>') + '<br><strong>When:</strong> ' + esc(DIL.formatLong(c.workDate)) + '</p>', '<p><a href="' + esc(c.url) + '">Open the claim</a> to approve or decline.</p>'])
+          text: S.email.wrap([c.staffName + ' says they earned ' + fd(c.amount) + ' in lieu.', 'What: ' + c.reason + '\nWhen: ' + DIL.formatDateList(c.workDates), 'Open the claim to approve or decline:\n' + c.url]),
+          html: S.email.wrapHtml(['<p><strong>' + esc(c.staffName) + '</strong> says they earned <strong>' + esc(fd(c.amount)) + '</strong> in lieu.</p>', '<p><strong>What:</strong> ' + esc(c.reason).replace(/\n/g, '<br>') + '<br><strong>When:</strong> ' + esc(DIL.formatDateList(c.workDates)) + '</p>', '<p><a href="' + esc(c.url) + '">Open the claim</a> to approve or decline.</p>'])
         };
       },
       claimDecision: function (c) { // {first, principalName, claim, yearLabel, balance, url}
@@ -369,8 +373,8 @@ var S = (function () {
         var note = k.decisionNote ? 'Note from ' + c.principalName + ':\n' + k.decisionNote : '';
         return {
           subject: 'Your claim for ' + fd(k.amountClaimed) + ': ' + head,
-          text: S.email.wrap(['Hello ' + c.first + ',', cap(c.principalName) + ' has looked at your claim of ' + DIL.formatLong(k.submittedAt) + ' — ' + k.reason + ' (' + DIL.formatLong(k.workDate) + ').', outcome, note, S.email.balanceLine(c.yearLabel, c.balance), (k.status === 'declined' ? 'See your days:\n' : 'Book a day off:\n') + c.url]),
-          html: S.email.wrapHtml(['<p>Hello ' + esc(c.first) + ',</p>', '<p>' + esc(cap(c.principalName)) + ' has looked at your claim of ' + esc(DIL.formatLong(k.submittedAt)) + ' — ' + esc(k.reason) + ' (' + esc(DIL.formatLong(k.workDate)) + ').</p>', '<p><strong>' + esc(outcome) + '</strong></p>', k.decisionNote ? '<p><strong>Note from ' + esc(c.principalName) + ':</strong><br>' + esc(k.decisionNote).replace(/\n/g, '<br>') + '</p>' : '', '<p>' + esc(S.email.balanceLine(c.yearLabel, c.balance)) + '</p>', '<p><a href="' + esc(c.url) + '">' + (k.status === 'declined' ? 'See your days' : 'Book a day off') + '</a></p>'])
+          text: S.email.wrap(['Hello ' + c.first + ',', cap(c.principalName) + ' has looked at your claim of ' + DIL.formatLong(k.submittedAt) + ' — ' + k.reason + ' (' + DIL.formatDateList(k.workDates) + ').', outcome, note, S.email.balanceLine(c.yearLabel, c.balance), (k.status === 'declined' ? 'See your days:\n' : 'Book a day off:\n') + c.url]),
+          html: S.email.wrapHtml(['<p>Hello ' + esc(c.first) + ',</p>', '<p>' + esc(cap(c.principalName)) + ' has looked at your claim of ' + esc(DIL.formatLong(k.submittedAt)) + ' — ' + esc(k.reason) + ' (' + esc(DIL.formatDateList(k.workDates)) + ').</p>', '<p><strong>' + esc(outcome) + '</strong></p>', k.decisionNote ? '<p><strong>Note from ' + esc(c.principalName) + ':</strong><br>' + esc(k.decisionNote).replace(/\n/g, '<br>') + '</p>' : '', '<p>' + esc(S.email.balanceLine(c.yearLabel, c.balance)) + '</p>', '<p><a href="' + esc(c.url) + '">' + (k.status === 'declined' ? 'See your days' : 'Book a day off') + '</a></p>'])
         };
       },
       claimWithdrawn: function (c) { // {staffName, claim, url}
