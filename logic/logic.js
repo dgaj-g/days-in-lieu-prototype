@@ -278,7 +278,14 @@ var DIL = (function () {
   function canCancelDay(day, today) { return day.status === 'approved' && day.date >= today; }
 
   // ---------- roles ----------
-  function norm(email) { return String(email || '').trim().toLowerCase(); }
+  // The school's Google domain and C2k's are the same accounts under two names: fmcalinden045@ourladysgrammar.newry.ni.sch.uk
+  // IS fmcalinden045@c2ken.net. Every email is folded to the c2ken.net form before it is compared or stored.
+  var DOMAIN_ALIASES = { 'ourladysgrammar.newry.ni.sch.uk': 'c2ken.net' };
+  function norm(email) {
+    var e = String(email || '').trim().toLowerCase(), at = e.lastIndexOf('@');
+    if (at < 0) return e;
+    var dom = e.slice(at + 1); return e.slice(0, at + 1) + (DOMAIN_ALIASES[dom] || dom);
+  }
   // A Staff row counts unless active is 'no' (removed). Blank counts: a row pasted straight into the Sheet is on the list.
   function isOnList(row) { return String(row && row.active || '').trim().toLowerCase() !== 'no'; }
   // First visit: the sign-in gives an email and a name; a person not on the list is added as teaching staff, never as an approver.
@@ -486,7 +493,7 @@ var DIL = (function () {
     parseTypedDate: parseTypedDate, dateProblem: dateProblem, closureFor: closureFor, monthGrid: monthGrid, monthRange: monthRange, claimMonthGrid: claimMonthGrid, claimMonths: claimMonths,
     nextRequestId: nextRequestId, requestStatus: requestStatus, validateSubmission: validateSubmission, applyDecision: applyDecision, joinWords: joinWords, canWithdraw: canWithdraw, canCancelDay: canCancelDay,
     isHalfStep: isHalfStep, nextClaimId: nextClaimId, parseClaimDate: parseClaimDate, parseWorkDays: parseWorkDays, workDaysCell: workDaysCell, claimTotal: claimTotal, validateClaim: validateClaim, applyClaimDecision: applyClaimDecision, canWithdrawClaim: canWithdrawClaim, balance: balance, canReduceClaim: canReduceClaim,
-    norm: norm, findStaff: findStaff, isOnList: isOnList, registerVisitor: registerVisitor, roleFor: roleFor, approvers: approvers, firstName: firstName,
+    norm: norm, DOMAIN_ALIASES: DOMAIN_ALIASES, findStaff: findStaff, isOnList: isOnList, registerVisitor: registerVisitor, roleFor: roleFor, approvers: approvers, firstName: firstName,
     summarise: summarise, perStaff: perStaff, schoolTotals: schoolTotals, monthBuckets: monthBuckets, offSoon: offSoon, csvOf: csvOf, reasonGroups: reasonGroups
   };
 })();

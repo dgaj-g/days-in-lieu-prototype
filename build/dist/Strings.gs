@@ -332,7 +332,7 @@ var S = (function () {
       addButton: 'Add to the list',
       added: function (name) { return name + ' added.'; },
       needName: 'Add their name first.',
-      badEmail: 'That doesn’t look like a C2k email (name@c2ken.net).',
+      badEmail: 'That doesn’t look like a school email (name@c2ken.net or name@ourladysgrammar.newry.ni.sch.uk).',
       duplicate: 'That email is already on the list.',
       remove: 'Remove',
       removeConfirm: function (name) { return 'Remove ' + name + '? They won’t be able to open Days in Lieu until an approver adds them back. Their past claims and bookings stay on record.'; },

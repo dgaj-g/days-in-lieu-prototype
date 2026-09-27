@@ -46,15 +46,21 @@ function rows(name) { return book.sheets[name].rows.slice(1); }
 function weekday(offset) { let d = TODAY, k = 0; while (k < offset) { d = D.addDays(d, 1); if (!D.isWeekend(d)) k++; } return d; }
 
 // 1. set up as an admin account, with the Principal named in PRINCIPAL_EMAIL
-viewer = 'admin@c2ken.net'; vm.runInContext("PRINCIPAL_EMAIL = 'principal001@c2ken.net'; setup()", ctx);
+viewer = 'admin@c2ken.net'; vm.runInContext("PRINCIPAL_EMAIL = 'fmcalinden045@c2ken.net'; setup()", ctx);
 eq(Object.keys(book.sheets).sort(), ['Claims', 'Closures', 'Config', 'Days', 'Requests', 'Staff'], 'setup creates the six sheets');
-eq(rows('Staff'), [['admin@c2ken.net', '', 'approver', 'yes'], ['principal001@c2ken.net', '', 'approver', 'yes']], 'the deploying account and the Principal are both approvers');
+eq(rows('Staff'), [['admin@c2ken.net', '', 'approver', 'yes'], ['fmcalinden045@c2ken.net', '', 'approver', 'yes']], 'the deploying account and the Principal are both approvers');
+// The Principal signs in under the school domain: same account, same row, approver, straight to the approval side
+let pr = as('fmcalinden045@ourladysgrammar.newry.ni.sch.uk', 'whoami');
+eq([pr.role, pr.email, pr.removed], ['approver', 'fmcalinden045@c2ken.net', false], 'school-domain sign-in resolves to the Principal\'s c2ken row');
+eq(rows('Staff').length, 2, 'no duplicate row for the alias');
+eq(D.norm('FMcAlinden045@OurLadysGrammar.Newry.NI.sch.uk'), 'fmcalinden045@c2ken.net', 'norm folds domain and case');
+eq(D.norm('chughes400@c2ken.net'), 'chughes400@c2ken.net', 'c2ken form unchanged');
 eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons'], 'config defaults');
 book.sheets.Closures.appendRow([weekday(3), weekday(3), 'Inset day']);
-let me = as('principal001@c2ken.net', 'whoami');
+let me = as('fmcalinden045@c2ken.net', 'whoami');
 eq([me.role, me.needName, me.queueCount, !!me.sheetUrl], ['approver', true, 0, true], 'principal whoami: approver, needs a name, sees the sheet');
 eq(me.cfg.quickReasons, ['Residential trip', 'Weekend fixture', 'SEAG Help'], 'quick reasons come from Config as a list');
-eq(as('principal001@c2ken.net', 'setMyName', 'The Principal'), { ok: true, name: 'The Principal' }, 'principal names themselves');
+eq(as('fmcalinden045@c2ken.net', 'setMyName', 'The Principal'), { ok: true, name: 'The Principal' }, 'principal names themselves');
 eq(rows('Staff')[1][1], 'The Principal', 'name written to the Staff sheet');
 
 // 2. a new teacher arrives
@@ -78,7 +84,7 @@ ok(c1.ok && c1.claim.status === 'pending', 'claim submitted', c1);
 eq(c1.claim.amountClaimed, D.claimTotal(workDays), 'amount claimed is the sum of the days');
 eq(c1.claim.workDays, workDays.slice().sort((a, b) => a.date < b.date ? -1 : 1), 'work days come back sorted with portions');
 eq(rows('Claims')[0][4], D.workDaysCell(c1.claim.workDays), 'WorkDays cell holds the compact form');
-eq([mails.length, lastMail().to], [1, 'admin@c2ken.net,principal001@c2ken.net'], 'claim email goes to every approver');
+eq([mails.length, lastMail().to], [1, 'admin@c2ken.net,fmcalinden045@c2ken.net'], 'claim email goes to every approver');
 ok(/claims/.test(lastMail().subject) && lastMail().htmlBody.indexOf('Open the claim') > 0, 'claim email subject and body', lastMail().subject);
 eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Old', workDays: [{ date: D.addDays(year.start, -1), portion: 'full' }] }).code, 'date_outside_year', 'last year refused: no carry-over');
 eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Bad', workDays: [{ date: TODAY, portion: 'am' }] }).code, 'bad_portion', 'a booking portion is not a claim portion');
@@ -88,7 +94,7 @@ let bk0 = as('dgartland021@c2ken.net', 'submit', { reason: '', days: [{ date: we
 eq(bk0.code, 'over_balance', 'booking refused: nothing approved yet');
 
 // 5. Principal approves fewer, with a note
-viewer = 'principal001@c2ken.net';
+viewer = 'fmcalinden045@c2ken.net';
 let q = call('queue'); eq([q.count, q.claims.length, q.requests.length], [1, 1, 0], 'queue shows the claim');
 eq(q.claims[0].balance.left, 0, 'year line on the claim card: 0 left');
 eq(call('decideClaim', c1.claim.claimId, { approve: true, amount: 1, note: '' }).code, 'note_required', 'fewer days needs a note');
@@ -109,11 +115,11 @@ mails = [];
 let bk1 = call('submit', { reason: 'Long weekend', days: [{ date: weekday(1), portion: 'am' }, { date: weekday(2), portion: 'pm' }] });
 eq([bk1.ok, bk1.request.status, bk1.request.total, bk1.balance.left, bk1.balance.pending], [true, 'pending', 1, 0, 1], 'booking of two halves sent; 0 left while awaiting');
 eq(rows('Requests').length + rows('Days').length, 3, 'one request row, two day rows');
-eq(lastMail().to, 'admin@c2ken.net,principal001@c2ken.net', 'booking email to every approver');
+eq(lastMail().to, 'admin@c2ken.net,fmcalinden045@c2ken.net', 'booking email to every approver');
 eq(call('submit', { reason: '', days: [{ date: weekday(1), portion: 'pm' }] }).code, 'already_requested', 'same day again refused');
 
 // 7. Principal declines one half with a reason, approves the other
-viewer = 'principal001@c2ken.net';
+viewer = 'fmcalinden045@c2ken.net';
 q = call('queue'); eq([q.count, q.requests[0].days.length], [1, 2], 'booking in the queue');
 const [dA, dB] = q.requests[0].days.map(d => d.dayId);
 let ch = {}; ch[dA] = 'approved'; ch[dB] = 'declined';
@@ -130,10 +136,11 @@ let de = call('decided'); eq([de.claims.length, de.requests.length], [1, 1], 'de
 let ov = call('overview'); eq(ov.rows.length, 1, 'overview: one member of staff with activity');
 eq([ov.rows[0].entitled, ov.rows[0].booked, ov.rows[0].left], [1, 0.5, 0.5], 'overview numbers');
 let csv = call('csv'); ok(csv.ok && csv.content.split(/\r?\n/)[0] === 'Name,Email,Claimed,Approved,Booked,Taken,Left,Awaiting', 'csv header', csv.content);
-eq(call('staffAdd', { email: 'CHughes400@c2ken.net', name: 'Claire Hughes', role: 'staff' }), { ok: true }, 'add staff (email normalised)');
+eq(call('staffAdd', { email: 'CHughes400@ourladysgrammar.newry.ni.sch.uk', name: 'Claire Hughes', role: 'staff' }), { ok: true }, 'add staff by the school-domain address (stored as c2ken)');
+eq(rows('Staff').filter(r => r[0] === 'chughes400@c2ken.net').length, 1, 'stored in the c2ken form');
 eq(call('staffAdd', { email: 'someone@gmail.com', name: 'X', role: 'staff' }).code, 'bad_email', 'only c2ken addresses');
 eq(call('staffAdd', { email: 'chughes400@c2ken.net', name: 'Claire', role: 'staff' }).code, 'duplicate', 'no duplicates');
-eq(call('staffRemove', 'principal001@c2ken.net').code, 'not_allowed', 'cannot remove yourself');
+eq(call('staffRemove', 'fmcalinden045@c2ken.net').code, 'not_allowed', 'cannot remove yourself');
 eq(call('staffRole', 'chughes400@c2ken.net', 'approver'), { ok: true }, 'promote to approver');
 eq(call('staffList').staff.map(s => s.role).sort(), ['approver', 'approver', 'approver', 'staff'], 'staff list shows roles');
 eq(call('staffRemove', 'chughes400@c2ken.net'), { ok: true }, 'remove');
@@ -154,16 +161,16 @@ eq(call('cancelDay', up[0].dayId).code, 'not_allowed', 'cannot cancel twice');
 // 10. a decision whose email fails is not saved
 viewer = 'p2@bounce.c2ken.net'; book.sheets.Staff.appendRow(['p2@bounce.c2ken.net', 'Bounce', 'staff', 'yes']);
 let c3 = call('submitClaim', { reason: 'Trip', workDays: [{ date: TODAY, portion: 'full' }] }).claim;
-viewer = 'principal001@c2ken.net';
+viewer = 'fmcalinden045@c2ken.net';
 let threw = false; try { call('decideClaim', c3.claimId, { approve: true, note: '' }); } catch (e) { threw = true; }
 ok(threw, 'mail failure surfaces as an error to the browser');
 eq(rows('Claims').filter(r => r[0] === c3.claimId)[0][8], 'pending', 'and the claim stays pending in the sheet');
 
 // 11. role guards and the JSON wire
 threw = false; try { as('dgartland021@c2ken.net', 'queue'); } catch (e) { threw = true; } ok(threw, 'staff cannot open the queue');
-threw = false; try { as('principal001@c2ken.net', 'myDays'); } catch (e) { threw = true; } ok(threw, 'the Principal has no My days: approver cannot use staff calls');
-threw = false; try { as('principal001@c2ken.net', 'submitClaim', { reason: 'x', workDays: [{ date: TODAY, portion: 'full' }] }); } catch (e) { threw = true; } ok(threw, 'approver cannot claim');
+threw = false; try { as('fmcalinden045@c2ken.net', 'myDays'); } catch (e) { threw = true; } ok(threw, 'the Principal has no My days: approver cannot use staff calls');
+threw = false; try { as('fmcalinden045@c2ken.net', 'submitClaim', { reason: 'x', workDays: [{ date: TODAY, portion: 'full' }] }); } catch (e) { threw = true; } ok(threw, 'approver cannot claim');
 threw = false; try { as('nobody@c2ken.net', 'setMyName', 'X'); call('nope'); } catch (e) { threw = true; } ok(threw, 'unknown call name throws');
-ok(JSON.stringify(as('principal001@c2ken.net', 'decided')).indexOf('_row') < 0, 'sheet row numbers never leave the server');
+ok(JSON.stringify(as('fmcalinden045@c2ken.net', 'decided')).indexOf('_row') < 0, 'sheet row numbers never leave the server');
 
 console.log(fails ? `\n${fails} of ${n} FAILED` : `\nall ${n} passed`); process.exit(fails ? 1 : 0);

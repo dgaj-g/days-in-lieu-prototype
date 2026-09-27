@@ -45,8 +45,9 @@ If `clasp login` is refused ("access blocked"), C2k has not allowed the clasp OA
 
 ### Then, either route
 
-4. In `Code.gs`, put the Principal's C2k address in `PRINCIPAL_EMAIL` at the top: `setup` then makes her an approver
-   from the start, so the link opens on the approval side for her. Run the function **setup** once (Run ▸ setup). Grant the permissions it asks for:
+4. `PRINCIPAL_EMAIL` at the top of `Code.gs` is already the Principal's address (`fmcalinden045@c2ken.net`; her
+   `@ourladysgrammar.newry.ni.sch.uk` form is the same account and is folded to it). `setup` makes her an approver from
+   the start, so the link opens on the approval side for her. Run the function **setup** once (Run ▸ setup). Grant the permissions it asks for:
    see and edit this spreadsheet, send email as you, see your email address. Back in the Sheet, six tabs now exist
    and **Staff** holds the deploying account and the Principal as approvers.
 5. **Staff tab**: add any staff you

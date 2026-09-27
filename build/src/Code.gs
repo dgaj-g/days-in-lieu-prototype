@@ -4,8 +4,10 @@
    and every word of English in Strings.gs (S) — this file only reads and writes the Sheet and sends the emails.
    Build: Fable 5.1, 27 Sep 2026. */
 
-// The Principal's C2k address. setup() puts it on the Staff tab as an approver, so the approval side opens for her the first time she follows the link.
-var PRINCIPAL_EMAIL = '';   // e.g. 'jbloggs123@c2ken.net' — fill in before running setup (or add her on the Staff tab afterwards)
+// The Principal. setup() puts her on the Staff tab as an approver, so the approval side opens for her the first time she follows the link.
+// Her account has two names — fmcalinden045@ourladysgrammar.newry.ni.sch.uk and fmcalinden045@c2ken.net — and DIL.norm folds
+// the school-domain form to the c2ken.net form, so whichever the sign-in reports, it is the same row.
+var PRINCIPAL_EMAIL = 'fmcalinden045@c2ken.net';
 
 var SHEETS = ['Staff', 'Config', 'Closures', 'Claims', 'Requests', 'Days'];
 var HEAD = {
