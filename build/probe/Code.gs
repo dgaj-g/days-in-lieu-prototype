@@ -1,7 +1,7 @@
 /* Days in Lieu — display-name probe. Web app: Execute as Me, access Anyone within c2ken.net.
    Shows, for the VISITOR, the email Session reports and what each lookup-by-email route returns. Throwaway. */
-function doGet() {
-  var rows = [], email = '';
+function doGet(e) {
+  var rows = [], email = '', q = (e && e.parameter && e.parameter.q) || '';
   try { email = Session.getActiveUser().getEmail() || ''; rows.push(['Session.getActiveUser().getEmail()', email || '(empty)']); } catch (e) { rows.push(['getActiveUser', 'ERROR ' + e]); }
   try { rows.push(['Session.getEffectiveUser().getEmail() (the deployer)', Session.getEffectiveUser().getEmail()]); } catch (e) { rows.push(['getEffectiveUser', 'ERROR ' + e]); }
   var c2k = String(email).toLowerCase().replace(/@ourladysgrammar\.newry\.ni\.sch\.uk$/, '@c2ken.net');
@@ -11,6 +11,13 @@ function doGet() {
       rows.push(['AdminDirectory.Users.get(' + addr + ') fullName', JSON.stringify(u.name) + ' primaryEmail=' + u.primaryEmail]);
     } catch (e) { rows.push(['AdminDirectory.Users.get(' + addr + ')', 'ERROR ' + e]); }
   });
+  // 1b. Someone ELSE, by email (?q=a,b)
+  q.split(',').filter(String).forEach(function (addr) {
+    try { var u = AdminDirectory.Users.get(addr, { viewType: 'domain_public', projection: 'basic' });
+      rows.push(['LOOKUP OTHER ' + addr, JSON.stringify(u.name) + ' primaryEmail=' + u.primaryEmail + ' emails=' + JSON.stringify((u.emails || []).map(function (m) { return m.address; }))]);
+    } catch (e) { rows.push(['LOOKUP OTHER ' + addr, 'ERROR ' + e]); }
+  });
+  try { var l = People.People.listDirectoryPeople({ readMask: 'names', sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'], pageSize: 3 }); rows.push(['People.listDirectoryPeople count', String((l.people || []).length)]); } catch (e) { rows.push(['People.listDirectoryPeople', 'ERROR ' + e]); }
   // 2. People API directory search by the visitor's email
   try { var r = People.People.searchDirectoryPeople({ query: email, readMask: 'names,emailAddresses', sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'] });
     var ps = r.people || []; rows.push(['People.searchDirectoryPeople hits', String(ps.length)]);
