@@ -329,6 +329,14 @@ h3.section:first-of-type { margin-top: 6px; }
 .cl-picked .pick button:hover { background: rgba(255,255,255,.35); }
 .cl-picked .pick button:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 @media (max-width: 720px) {
+  /* thumbs, not mouse pointers: nothing tappable under 40px */
+  .btn.sm, .seg button, .cal-head .btn, .views button, .filters button { min-height: 40px; }
+  .seg button { padding: 8px 12px; }
+  .picked-list .x { min-width: 40px; min-height: 40px; font-size: 22px; }
+  .cl-picked .pick { padding: 4px 4px 4px 14px; font-size: 14px; }
+  .cl-picked .pick button { width: 32px; height: 32px; font-size: 18px; }
+  .linkish { padding: 8px 2px; }
+  .cl-picked .pick, .chips button { min-height: 40px; }
   .doors { grid-template-columns: 1fr; }
   .door-card h3 { font-size: 22px; }
   .views { display: flex; }
