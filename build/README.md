@@ -59,7 +59,10 @@ If `clasp login` is refused ("access blocked"), C2k has not allowed the clasp OA
    Roles are exclusive: an approver sees only the approval side (To decide, Decided, Overview, Staff list) and cannot
    claim or book. The Principal's own days in lieu are handled outside this app.
 6. **Config tab**: `principalName` (how sentences refer to the approver, e.g. `Mrs Smith` or `the Principal`),
-   `quickReasons` (the quick-fill buttons), the academic year start (1 September by default).
+   `quickReasons` (the quick-fill buttons), the academic year start (1 September by default), `claimsFrom` (the
+   earliest day a claim may cover, YYYY-MM-DD; it only reaches back into the year before, so `2026-07-01` lets
+   2026–27 take claims for the summer of 2026 and lapses by itself in 2027–28; blank = the year start; a Sheet
+   with no `claimsFrom` row uses the built-in 2026-07-01).
    After step 8, paste the web app URL (ends `/exec`) into `appUrl`: every email links there. Left blank, an email
    sent from a call that did not come through the live link (for example a function run in the editor) links to the
    editor's `/dev` address, which staff cannot open.
@@ -74,7 +77,7 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
 
 ## The live deployment (27 Sep 2026)
 
-- Web app, Version 8 from 28 Sep 2026 (the URL never changes on a redeploy):
+- Web app, Version 9 from 28 Sep 2026 18:14 — claims from 1 July 2026 (the URL never changes on a redeploy):
   https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
 - The Sheet (dgartland021's C2k Drive; the script is bound to it):
   https://docs.google.com/spreadsheets/d/1mlAvXuCuH5tkB4udW1HSDN2f7neqlXHXjaWdcDxfOFA/edit
@@ -129,8 +132,8 @@ The OWNER must also have granted the main project `script.external_request` (doP
 function that uses UrlFetch once in the editor and approve. Without it every hand-in answers `failed` with
 "You do not have permission to call UrlFetchApp.fetch" in `why`. Granted 28 Sep 2026.
 
-Deployments (Manage deployments): the main staff link AKfycby5o… is labelled "Main staff link - Google step
-wording" (Version 7); the name hand-in AKfycbw1bp3S… (access Anyone) shows as "Untitled" (Version 6). Same code for
+Deployments (Manage deployments): the main staff link AKfycby5o… is labelled "Main staff link - claims from
+1 July 2026" (Version 9); the name hand-in AKfycbw1bp3S… (access Anyone) shows as "Untitled" (Version 6). Same code for
 doPost in both.
 
 The Review permissions screen says "Unverified" until C2k central marks school-built apps as trusted (request text:
