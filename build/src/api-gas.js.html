@@ -3,7 +3,7 @@
    Every method returns a Promise, exactly as the mock did, so app.js is unchanged. */
 window.DIL_API = (function () {
   'use strict';
-  var NAMES = ['whoami', 'setMyName', 'myDays', 'submitClaim', 'withdrawClaim', 'submit', 'withdraw', 'cancelDay',
+  var NAMES = ['whoami', 'myName', 'setMyName', 'myDays', 'submitClaim', 'withdrawClaim', 'submit', 'withdraw', 'cancelDay',
                'queue', 'decideClaim', 'decide', 'decided', 'overview', 'csv', 'staffList', 'staffAdd', 'staffRemove', 'staffRole'];
   function call(name, args) {
     return new Promise(function (resolve, reject) {

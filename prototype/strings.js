@@ -55,6 +55,16 @@ var S = (function () {
         hint: 'If that’s a mistake, ask the Principal to add you back from the Staff list, then open the link again.',
         wrongAccount: 'Signed in with the wrong account? Switch Google account and open the link again.'
       },
+      nameCheck: {
+        title: 'Getting your name from your school account',
+        body: 'This takes a few seconds, the first time only.',
+        askTitle: 'One step before you start',
+        askBody: 'Days in Lieu takes your name from your school account, so you never type it. Google asks your OK for that once.',
+        steps: ['Press Confirm with Google. A new tab opens.', 'If Google asks, choose your school account, then press Allow.', 'Come back to this tab. It carries on by itself.'],
+        button: 'Confirm with Google',
+        watching: 'Waiting for Google…',
+        typeInstead: 'Google not working? Type your name instead'
+      },
       needName: {
         title: 'What should we call you?',
         body: function (email) { return 'You’re signed in as ' + email + '. Your C2k account didn’t give us a name, so add it once and you’re in. It appears on your claims and bookings and on the Principal’s lists.'; },

@@ -108,6 +108,7 @@ window.DIL_API = (function () {
     _forceDecideClaim: function (id) { claims.forEach(function (c) { if (c.claimId === id && c.status === 'pending') { c.status = 'approved'; c.amountApproved = c.amountClaimed; c.decidedAt = TODAY; c.decidedBy = P; } }); },
     whoami: function () { return wait().then(function () { var reg = viewer.email ? DIL.registerVisitor(staff, viewer.email, autoName()) : { code: 'no_email' }; if (reg.code === 'added') staff.push(reg.row);
       var s = me(); return { ok: true, email: viewer.email, name: s ? s.name : '', autoName: autoName(), needName: !!(s && !s.name), removed: reg.code === 'removed', role: role(), queueCount: queueCount(), today: TODAY, appUrl: APP_URL, sheetUrl: 'https://docs.google.com/spreadsheets/d/EXAMPLE', cfg: { principalName: cfg.principalName, quickReasons: cfg.quickReasons }, year: DIL.currentYear(TODAY, cfg), window: DIL.requestWindow(TODAY, cfg) }; }); },
+    myName: function () { return wait().then(function () { var s = me(); return { ok: true, name: s ? s.name : '' }; }); },
     setMyName: function (name) { return wait().then(function () { need('any'); name = String(name || '').trim(); if (!name) return { ok: false, code: 'need_name' }; me().name = name; return { ok: true, name: name }; }); },
     // ----- staff: my days -----
     myDays: function (startYear) { return wait().then(function () { need('staff'); var year = startYear ? DIL.yearBounds(startYear, cfg) : DIL.currentYear(TODAY, cfg);

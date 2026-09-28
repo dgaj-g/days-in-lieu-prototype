@@ -25,7 +25,8 @@ var CONFIG_DEFAULTS = [
   ['nextYearOpens', '', 'Leave blank, or MM-DD from which bookings may be made into next year (e.g. 06-01).'],
   ['principalName', 'the Principal', 'How the app refers to the approver in sentences, lower case.'],
   ['quickReasons', 'Residential trip, Weekend fixture, SEAG Help', 'Quick-fill buttons on the claim form, comma separated.'],
-  ['appUrl', '', 'The web app link (Deploy → Manage deployments, ends /exec). Every email links here.']
+  ['appUrl', '', 'The web app link (Deploy → Manage deployments, ends /exec). Every email links here.'],
+  ['nameUrl', '', 'The name check link (the separate "Days in Lieu · name check" project, ends /exec). Blank = staff type their name.']
 ];
 var NUMERIC = { Claims: ['AmountClaimed', 'AmountApproved', 'StartYear'], Requests: ['StartYear'], Days: ['Value', 'StartYear'] };   // per sheet: Config's Value column is text
 
@@ -163,6 +164,37 @@ function yearsSeen(st, email) {
 function need(st, email, role) { var r = DIL.roleFor(email, st.staff); if (role === 'any' ? r === 'unknown' : r !== role) throw new Error('not allowed'); }
 function me(st, email) { var s = DIL.findStaff(email, st.staff); if (!s) throw new Error('not on the list'); return s; }
 
+/* The name hand-in. The main app runs as its owner, so it cannot see a visitor's Google profile, and C2k's directory
+   refuses every account but the owner's (displayName above). The name check is a separate small project that runs as
+   the VISITOR: it takes the visitor's own Google token and posts it here, to a deployment of this project published to
+   Anyone (a domain-only deployment refuses server-to-server calls). This side asks Google who the token belongs to, so
+   nothing the caller says about itself is trusted: the email and name come from Google's answer. It fills a BLANK name
+   on an existing Staff row only, and never adds a row. */
+function doPost(e) {
+  var out = { ok: false };
+  try {
+    var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    var who = googleProfile(String(body.token || ''));
+    if (who.email && who.name && /@c2ken\.net$/.test(who.email)) out = withLock(function () {
+      var st = loadStore(), s = DIL.findStaff(who.email, st.staff);
+      if (!s) return { ok: false, code: 'not_on_list' };
+      if (!s.name) { s.name = who.name; saveRow('Staff', s); }
+      return { ok: true, name: s.name };
+    });
+  } catch (err) { out = { ok: false, code: 'failed' }; }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+// Google's own answer to "whose token is this?" — OpenID userinfo. Staff accounts give an initial and surname ("D Gartland").
+function googleProfile(token) {
+  if (!token) return {};
+  var r = UrlFetchApp.fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) return {};
+  var u = JSON.parse(r.getContentText());
+  var name = String(u.name || [u.given_name, u.family_name].filter(Boolean).join(' ')).replace(/\s+/g, ' ').trim();
+  var email = DIL.norm(u.email || '');
+  return { email: email, name: name && name.toLowerCase() !== email.split('@')[0] ? name : '' };
+}
+
 /* ---------- the API ---------- */
 var API = {
   whoami: function () {
@@ -172,9 +204,11 @@ var API = {
     else if (reg.code === 'known' && !reg.row.name) { auto = displayName(email); if (auto) { reg.row.name = auto; withLock(function () { saveRow('Staff', reg.row); }); } }
     var s = email ? DIL.findStaff(email, st.staff) : null, role = email ? DIL.roleFor(email, st.staff) : 'unknown';
     return { ok: true, email: email, name: s ? s.name : '', autoName: auto, needName: !!(s && !s.name), removed: reg.code === 'removed', role: role, queueCount: queueCount(st, email), today: today(),
-             appUrl: appUrl(st), sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
+             appUrl: appUrl(st), nameUrl: String(st.cfg.nameUrl || ''), sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
              year: DIL.currentYear(today(), st.cfg), window: DIL.requestWindow(today(), st.cfg) };
   },
+  // Polled by the page while the name check runs in the background.
+  myName: function () { var email = viewerEmail(), st = loadStore(), s = email ? DIL.findStaff(email, st.staff) : null; return { ok: true, name: s ? s.name : '' }; },
   setMyName: function (name) {
     var email = viewerEmail(), st = loadStore(); need(st, email, 'any'); name = String(name || '').trim(); if (!name) return { ok: false, code: 'need_name' };
     var s = me(st, email); s.name = name; withLock(function () { saveRow('Staff', s); }); return { ok: true, name: name };

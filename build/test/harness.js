@@ -8,6 +8,8 @@ const src = ['Logic.gs', 'Strings.gs', 'Code.gs'].map(f => fs.readFileSync(path.
 let viewer = '', TZ = 'Europe/London', mails = [];
 // The directory: names it will give, accounts it refuses (as C2k refuses everyone but the owner), and a call count.
 const directory = { names: {}, refuse: {}, calls: 0 }, props = {};
+// Google's userinfo: what each token belongs to (the name check posts the visitor's own token).
+const tokens = {};
 class Range {
   constructor(sheet, r, c, nr, nc) { Object.assign(this, { sheet, r, c, nr, nc }); }
   getValues() { const out = []; for (let i = 0; i < this.nr; i++) { const row = this.sheet.rows[this.r - 1 + i] || []; out.push(Array.from({ length: this.nc }, (_, j) => row[this.c - 1 + j] === undefined ? '' : row[this.c - 1 + j])); } return out; }
@@ -32,6 +34,8 @@ const ctx = {
   HtmlService: { createTemplateFromFile: (n) => ({ evaluate() { return { setTitle() { return this; }, addMetaTag() { return this; }, setFaviconUrl() { return this; }, setXFrameOptionsMode() { return this; } }; } }), createHtmlOutputFromFile: () => ({ getContent: () => '' }), XFrameOptionsMode: { ALLOWALL: 1 } },
   Utilities: { formatDate: (d) => d.toISOString().slice(0, 10) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+  UrlFetchApp: { fetch: (url, o) => { const u = tokens[String(o.headers.Authorization).replace('Bearer ', '')]; return { getResponseCode: () => (u ? 200 : 401), getContentText: () => JSON.stringify(u || { error: 'invalid_token' }) }; } },
+  ContentService: { createTextOutput: (t) => ({ text: t, setMimeType() { return this; } }), MimeType: { JSON: 'json' } },
   ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/a/macros/c2ken.net/s/TEST/exec' }) }
 };
 vm.createContext(ctx); vm.runInContext(src, ctx, { filename: 'dist' });
@@ -59,7 +63,7 @@ eq([pr.role, pr.email, pr.removed], ['approver', 'fmcalinden045@c2ken.net', fals
 eq(rows('Staff').length, 2, 'no duplicate row for the alias');
 eq(D.norm('FMcAlinden045@OurLadysGrammar.Newry.NI.sch.uk'), 'fmcalinden045@c2ken.net', 'norm folds domain and case');
 eq(D.norm('chughes400@c2ken.net'), 'chughes400@c2ken.net', 'c2ken form unchanged');
-eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons', 'appUrl'], 'config defaults');
+eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons', 'appUrl', 'nameUrl'], 'config defaults');
 book.sheets.Closures.appendRow([weekday(3), weekday(3), 'Inset day']);
 let me = as('fmcalinden045@c2ken.net', 'whoami');
 eq([me.role, me.needName, me.queueCount, !!me.sheetUrl], ['approver', true, 0, true], 'principal whoami: approver, needs a name, sees the sheet');
@@ -199,5 +203,28 @@ let before = directory.calls; me = as('later400@c2ken.net', 'whoami');
 eq([directory.calls - before, me.needName], [0, true], 'after a refusal the lookup rests: no call, the door asks');
 directory.names['admin@c2ken.net'] = 'A Dmin'; before = directory.calls;
 eq([vm.runInContext("displayName('admin@c2ken.net')", ctx), directory.calls - before], ['A Dmin', 1], 'the owner is still looked up while it rests');
+
+// 13. the name check hands in the visitor's own Google token; the name comes from Google's answer, never from the caller
+const post = (body) => JSON.parse(vm.runInContext('doPost', ctx)({ postData: { contents: JSON.stringify(body) } }).text);
+book.sheets.Staff.appendRow(['newstaff500@c2ken.net', '', 'staff', 'yes']);
+tokens.T500 = { email: 'newstaff500@c2ken.net', name: 'N Staff', given_name: 'N', family_name: 'Staff' };
+viewer = 'newstaff500@c2ken.net'; eq(call('myName').name, '', 'before the check: no name');
+eq(post({ token: 'T500' }), { ok: true, name: 'N Staff' }, 'hand-in: token read by Google, name returned');
+eq(rows('Staff').filter(r => r[0] === 'newstaff500@c2ken.net')[0][1], 'N Staff', 'hand-in fills the blank Staff name');
+eq(call('myName').name, 'N Staff', 'the waiting page sees the name');
+tokens.T500b = { email: 'newstaff500@c2ken.net', name: 'Someone Else' };
+eq(post({ token: 'T500b' }).name, 'N Staff', 'hand-in never overwrites a name already there');
+eq(post({ token: 'forged', email: 'fmcalinden045@c2ken.net', name: 'Hacker' }).ok, false, 'a token Google does not know is refused, whatever the body claims');
+tokens.T501 = { email: 'outsider@gmail.com', name: 'Out Sider' };
+eq(post({ token: 'T501' }).ok, false, 'an account outside c2ken is refused');
+const rowsBefore = rows('Staff').length; tokens.T502 = { email: 'notlisted502@c2ken.net', name: 'Not Listed' };
+eq([post({ token: 'T502' }).code, rows('Staff').length], ['not_on_list', rowsBefore], 'hand-in never adds a row');
+tokens.T503 = { email: 'fmcalinden045@ourladysgrammar.newry.ni.sch.uk', given_name: 'F', family_name: 'McAlinden' };
+const pRow = book.sheets.Staff.rows.find(r => r[0] === 'fmcalinden045@c2ken.net'); const pWas = pRow[1]; pRow[1] = '';
+eq(post({ token: 'T503' }).name, 'F McAlinden', 'school-domain token folds to the Principal\'s row; given + family used when no full name');
+pRow[1] = pWas;
+eq(post({}).ok, false, 'no token: refused');
+book.sheets.Config.rows.push(['nameUrl', 'https://script.google.com/a/macros/c2ken.net/s/NAME/exec', '']);
+eq(as('knew400@c2ken.net', 'whoami').nameUrl, 'https://script.google.com/a/macros/c2ken.net/s/NAME/exec', 'whoami hands the page the name check link');
 
 console.log(fails ? `\n${fails} of ${n} FAILED` : `\nall ${n} passed`); process.exit(fails ? 1 : 0);
