@@ -3,7 +3,7 @@
    It posts that token to the main project's hand-in deployment (doPost in the main Code.gs), which asks Google whose
    token it is and puts that person's name on their Staff row. The token asks only to see the visitor's name and email.
    Opened hidden inside Days in Lieu when a name is missing; opened in its own tab when Google first needs the visitor's OK. */
-var HAND_IN_URL = '';   // the main project's "name hand-in" deployment (Anyone), ends /exec — set at deploy
+var HAND_IN_URL = 'https://script.google.com/macros/s/AKfycbw1bp3S-nmIm3t0VKjod1vdxsehDv2pIXzSJT_fCDGlVzCa_2mCiEM3S268EuqqtI29/exec';   // the main project's "name hand-in" deployment (Anyone), ends /exec — set at deploy
 
 function doGet(e) {
   var quiet = !!(e && e.parameter && e.parameter.quiet), out = { ok: false };
