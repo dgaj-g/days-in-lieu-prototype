@@ -21,8 +21,8 @@ Check before deploying:
 
 ## Deploying (needs a browser signed in to the school Google account — do this on the Mac)
 
-Deploy as the account that should **own the Sheet and send the emails** (the Principal's, or a school admin
-account). The web app runs as that account for everyone ("execute as user deploying"), so it can read the Sheet
+Deploy as the account that should **own the Sheet** (the Principal's, or a school admin account). Emails go from
+each person's own address through the send page (see *Emails from the person's own address*). The web app runs as that account for everyone ("execute as user deploying"), so it can read the Sheet
 and send mail while each visitor is identified by their own C2k sign-in.
 
 ### Route A — clasp (recommended: pushes all ten files in one command)
@@ -77,7 +77,7 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
 
 ## The live deployment (27 Sep 2026)
 
-- Web app, Version 9 from 28 Sep 2026 18:14 — claims from 1 July 2026 (the URL never changes on a redeploy):
+- Web app, Version 10 from 28 Sep 2026 19:25 — emails from your own address (the URL never changes on a redeploy):
   https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
 - The Sheet (dgartland021's C2k Drive; the script is bound to it):
   https://docs.google.com/spreadsheets/d/1mlAvXuCuH5tkB4udW1HSDN2f7neqlXHXjaWdcDxfOFA/edit
@@ -86,7 +86,13 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
 - **Name hand-in** (28 Sep 2026): a second deployment of the SAME project, Execute as Me, access **Anyone** (a
   domain-only deployment answers 401 to a server-to-server call). Only its `doPost` matters:
   https://script.google.com/macros/s/AKfycbw1bp3S-nmIm3t0VKjod1vdxsehDv2pIXzSJT_fCDGlVzCa_2mCiEM3S268EuqqtI29/exec
-  On every redeploy of the main link, move this deployment to the same new version too.
+  On every redeploy of the main link, move this deployment to the same new version too (it also takes the send
+  page's `outbox` and `sent` posts). Version 10 since 28 Sep 2026 19:25.
+- **Send page** — the separate project "Days in Lieu · send from my email" (`build/sender/`, owner dgartland021,
+  script 1jM6Eje68wd0DQ6w4jSwcAewtBmUh-Q4fCvGr0PnyhuY8dpAcwaena4C9), Execute as **user accessing**, Anyone within
+  c2ken, scopes email + profile + send mail ONLY (Version 1). Config `sendUrl` = this link (also the built-in default):
+  https://script.google.com/a/macros/c2ken.net/s/AKfycbxdE0T9OX24xkzefYdVgm-g1FIA6VlNvB0bdVzDzyhR8sUOjWBzvMoi6728vdm-qGFu/exec
+  Its `HAND_IN_URL` = the hand-in link above.
 - **Name check** — the separate project "Days in Lieu · name check" (`build/companion/`, owner dgartland021), Execute
   as **user accessing**, Anyone within c2ken, scopes email + profile ONLY (Version 2). Its page, not its server, posts
   the visitor's token to the hand-in. Never add "external requests" to it: Google then shows an unticked "Connect to an
@@ -132,12 +138,30 @@ The OWNER must also have granted the main project `script.external_request` (doP
 function that uses UrlFetch once in the editor and approve. Without it every hand-in answers `failed` with
 "You do not have permission to call UrlFetchApp.fetch" in `why`. Granted 28 Sep 2026.
 
-Deployments (Manage deployments): the main staff link AKfycby5o… is labelled "Main staff link - claims from
-1 July 2026" (Version 9); the name hand-in AKfycbw1bp3S… (access Anyone) shows as "Untitled" (Version 6). Same code for
-doPost in both.
+Deployments (Manage deployments): the main staff link AKfycby5o… is labelled "Main staff link - emails from your
+own address" (Version 10); the hand-in AKfycbw1bp3S… (access Anyone) is labelled "Hand-in link - names and emails"
+(Version 10). Same code for doPost in both. Older labels sit under Archived: those are past versions, not lost links.
 
 The Review permissions screen says "Unverified" until C2k central marks school-built apps as trusted (request text:
 `Claude Work/_probes/c2k_trust_apps_request.txt`); after that it disappears with no change here.
+
+## Emails from the person's own address (28 Sep 2026, his ruling)
+
+Every email a person causes goes from **their own** school address, so nobody's request sits in the owner's Sent
+box: a claim, a booking, a withdrawal or a cancellation goes from the member of staff to the approvers; a decision
+goes from the Principal to the member of staff.
+
+* The action writes the Sheet and puts the email in a waiting list (ScriptProperties `mail:<id>`, one per email) and
+  returns its id. The page loads the send page (Config `sendUrl`) in a hidden frame. It runs as the person, asks the
+  hand-in for their own waiting emails (`outbox`, checked against Google's `userinfo`, so nobody gets anyone
+  else's), sends them with `MailApp` as themselves, and reports back (`sent`). Only `@c2ken.net` addresses are sent.
+* The first time, Google needs the person's OK ("send email as you"), which cannot show in a frame. After 9 s a small
+  corner card offers **Continue with Google** (opens the send page in a new tab) or **Send from the app instead**.
+* The app sends in their place only a **short note with no details** (*"F McAlinden has sent a claim for days in lieu.
+  Open it to approve or decline"* and the link): on *Send from the app instead*, when an email has waited over 10 minutes, or if the person's own
+  send fails. Finished entries are cleared after a day.
+* Blank `sendUrl` = the old way: every email goes in full from the app at once.
+* Nothing is sent twice: `outbox` marks each email *sending* before it hands it over.
 
 ## How the Sheet holds things
 
@@ -158,6 +182,6 @@ Edit the Sheet by hand only for Staff, Config and Closures; the app writes the o
 * Every rule is the same code the prototype runs (`Logic.gs` = `logic/logic.js`): no carry-over between years,
   no booking beyond approved days, a claim's amount is the sum of its days, fewer-than-claimed and declines need a note.
 * Writes take a script lock, and each write re-reads the Sheet first, so two people acting at once cannot cross.
-* A decision emails the person **before** it is written: if the email fails, nothing is saved and the Principal
-  sees "That didn't go through" and can try again.
+* A decision's email is made **before** the Sheet is written: sent from the app, if it fails nothing is saved and
+  the Principal sees "That didn't go through"; waiting for her send page, it is dropped if the Sheet write fails.
 * The browser only ever calls `api(name, args)`; the server checks the caller's role on every call.
