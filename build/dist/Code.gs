@@ -26,7 +26,8 @@ var CONFIG_DEFAULTS = [
   ['principalName', 'the Principal', 'How the app refers to the approver in sentences, lower case.'],
   ['quickReasons', 'Residential trip, Weekend fixture, SEAG Help', 'Quick-fill buttons on the claim form, comma separated.'],
   ['appUrl', '', 'The web app link (Deploy → Manage deployments, ends /exec). Every email links here.'],
-  ['nameUrl', '', 'The name check link (the separate "Days in Lieu · name check" project, ends /exec). Blank = staff type their name.']
+  ['nameUrl', '', 'The name check link (the separate "Days in Lieu · name check" project, ends /exec). Blank = staff type their name.'],
+  ['claimsFrom', '2026-07-01', 'Earliest day a claim may cover (YYYY-MM-DD). Only reaches back into the year before; blank = start of the year.']
 ];
 var NUMERIC = { Claims: ['AmountClaimed', 'AmountApproved', 'StartYear'], Requests: ['StartYear'], Days: ['Value', 'StartYear'] };   // per sheet: Config's Value column is text
 
@@ -120,6 +121,7 @@ function withLock(fn) {
 // Everything a call needs, read once. Claims/Requests/Days are unpacked from their cells into the shapes DIL expects.
 function loadStore() {
   var cfg = {}; readRows('Config').forEach(function (r) { cfg[r.key] = r.value; });
+  CONFIG_DEFAULTS.forEach(function (d) { if (!(d[0] in cfg)) cfg[d[0]] = d[1]; });   // a setting added after the Sheet was made
   cfg.quickReasons = String(cfg.quickReasons || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
   cfg.principalName = cfg.principalName || 'the Principal';
   var staff = readRows('Staff').map(function (r) { return { _row: r._row, email: r.email, name: r.name, role: r.role, active: r.active }; });
@@ -205,7 +207,7 @@ var API = {
     var s = email ? DIL.findStaff(email, st.staff) : null, role = email ? DIL.roleFor(email, st.staff) : 'unknown';
     return { ok: true, email: email, name: s ? s.name : '', autoName: auto, needName: !!(s && !s.name), removed: reg.code === 'removed', role: role, queueCount: queueCount(st, email), today: today(),
              appUrl: appUrl(st), nameUrl: String(st.cfg.nameUrl || ''), sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
-             year: DIL.currentYear(today(), st.cfg), window: DIL.requestWindow(today(), st.cfg) };
+             year: DIL.currentYear(today(), st.cfg), window: DIL.requestWindow(today(), st.cfg), claimWindow: DIL.claimWindow(DIL.currentYear(today(), st.cfg), st.cfg) };
   },
   // Polled by the page while the name check runs in the background.
   myName: function () { var email = viewerEmail(), st = loadStore(), s = email ? DIL.findStaff(email, st.staff) : null; return { ok: true, name: s ? s.name : '' }; },
@@ -224,7 +226,7 @@ var API = {
   // ----- staff: claims -----
   submitClaim: function (sub) {
     var email = viewerEmail(), st = loadStore(); need(st, email, 'staff'); var s = me(st, email), year = DIL.currentYear(today(), st.cfg); if (!s.name) return { ok: false, code: 'need_name' };
-    var v = DIL.validateClaim(sub, { todayISO: today(), year: year }); if (!v.ok) return v;
+    var v = DIL.validateClaim(sub, { todayISO: today(), year: year, window: DIL.claimWindow(year, st.cfg) }); if (!v.ok) return v;
     var c = withLock(function () {
       var fresh = loadStore();
       var k = { claimId: DIL.nextClaimId(fresh.claims.map(function (x) { return x.claimId; }), year), staffEmail: email, staffName: s.name, submittedAt: today(), workDays: v.claim.workDays, reason: v.claim.reason, amountClaimed: v.claim.amount, amountApproved: 0, status: 'pending', decisionNote: '', decidedAt: '', decidedBy: '', startYear: year.startYear };
