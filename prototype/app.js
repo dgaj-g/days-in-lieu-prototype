@@ -133,18 +133,7 @@ var DILApp = (function () {
     call('setMyName', name).then(function (r) { if (!r.ok) throw 0; st.me.name = r.name; st.me.needName = false; go(st.me.role === 'approver' ? 'queue' : 'dashboard'); }).catch(function () { unbusy(btn); serverFailed(); });
   }
   function nameLine() {
-    return '<p class="muted small name-line" id="name-line" style="margin:-8px 0 16px">' + esc(S.dash.shownAs(st.me.name)) + ' <button class="linkish" data-act="name-edit">' + esc(S.dash.changeName) + '</button></p>';
-  }
-  function nameEdit() {
-    var p = $('#name-line'); if (!p) return;
-    p.outerHTML = '<div class="card name-edit" id="name-line"><label class="f" for="my-name">' + esc(S.dash.nameLabel) + '</label><div class="name-row"><input type="text" id="my-name" value="' + esc(st.me.name) + '" autocomplete="name"><button class="btn primary sm" data-act="name-save">' + esc(S.dash.saveName) + '</button><button class="btn quiet sm" data-act="name-keep">' + esc(S.common.keep) + '</button></div><div class="help bad" id="name-err"></div></div>';
-    $('#my-name').focus(); $('#my-name').select();
-  }
-  function nameSave(btn) {
-    var name = $('#my-name').value.trim(), err = $('#name-err');
-    if (!name) { err.textContent = S.dash.needName; $('#my-name').focus(); return; }
-    err.textContent = ''; busy(btn, S.common.saving);
-    call('setMyName', name).then(function (r) { if (!r.ok) throw 0; st.me.name = r.name; toast(S.dash.nameSaved); go(st.tab); }).catch(function () { unbusy(btn); serverFailed(); });
+    return '<p class="muted small name-line" id="name-line" style="margin:-8px 0 16px">' + esc(S.dash.shownAs(st.me.name)) + '</p>';
   }
 
   /* ---------- My days (staff home): the two doors, the balance, claims, bookings ---------- */
@@ -735,9 +724,6 @@ var DILApp = (function () {
       case 'leave': if (st.nr) st.nr.leaveOK = true; if (st.cl) st.cl.leaveOK = true; go(t.dataset.to); break;
       case 'stay': t.closest('.leave-bar').remove(); break;
       case 'door-name': doorName(t); break;
-      case 'name-edit': nameEdit(); break;
-      case 'name-save': nameSave(t); break;
-      case 'name-keep': go(st.tab); break;
       case 'withdraw-ask': askWithdraw(t, false); break;
       case 'withdraw-claim-ask': askWithdraw(t, true); break;
       case 'withdraw-yes': doWithdraw(t); break;
@@ -803,7 +789,6 @@ var DILApp = (function () {
     if (e.key !== 'Enter') return;
     if (e.target.id === 'typed') { e.preventDefault(); typedAdd(); }
     else if (e.target.id === 'door-name') { e.preventDefault(); doorName($('[data-act=door-name]')); }
-    else if (e.target.id === 'my-name') { e.preventDefault(); nameSave($('[data-act=name-save]')); }
   }
 
   /* ---------- boot ---------- */

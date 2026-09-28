@@ -75,7 +75,7 @@ var S = (function () {
     dash: {
       role: function (roleLabel, yearLabel) { return roleLabel + ' · Academic year ' + yearLabel; },
       roleStaff: 'Teaching staff', roleApprover: 'Approver',
-      shownAs: function (name) { return 'You appear as ' + name + '.'; }, changeName: 'Change', nameLabel: 'Your name, as it should appear', saveName: 'Save', needName: 'Add your name first.', nameSaved: 'Name saved.',
+      shownAs: function (name) { return 'You appear as ' + name + '.'; },
       // the two doors
       doors: {
         claim: {
