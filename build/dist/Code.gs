@@ -27,7 +27,8 @@ var CONFIG_DEFAULTS = [
   ['quickReasons', 'Residential trip, Weekend fixture, SEAG Help', 'Quick-fill buttons on the claim form, comma separated.'],
   ['appUrl', '', 'The web app link (Deploy → Manage deployments, ends /exec). Every email links here.'],
   ['nameUrl', '', 'The name check link (the separate "Days in Lieu · name check" project, ends /exec). Blank = staff type their name.'],
-  ['claimsFrom', '2026-07-01', 'Earliest day a claim may cover (YYYY-MM-DD). Only reaches back into the year before; blank = start of the year.']
+  ['claimsFrom', '2026-07-01', 'Earliest day a claim may cover (YYYY-MM-DD). Only reaches back into the year before; blank = start of the year.'],
+  ['sendUrl', '', 'The send link (the separate "Days in Lieu · send from my email" project, ends /exec). Every email is then sent from the address of the person it is from. Blank = all from the app.']
 ];
 var NUMERIC = { Claims: ['AmountClaimed', 'AmountApproved', 'StartYear'], Requests: ['StartYear'], Days: ['Value', 'StartYear'] };   // per sheet: Config's Value column is text
 
@@ -48,6 +49,7 @@ function include(name) { return HtmlService.createHtmlOutputFromFile(name).getCo
 /* ---------- one entry point for the browser ---------- */
 function api(name, args) {
   if (!API.hasOwnProperty(name)) throw new Error('Unknown call: ' + name);
+  try { flushMail(); } catch (err) { console.error('flushMail: ' + err); }   // a decision email never waits more than ten minutes
   var out = API[name].apply(null, args || []);
   return JSON.parse(JSON.stringify(out === undefined ? null : out));   // plain JSON only: no Date objects across the wire
 }
@@ -136,9 +138,64 @@ function requestRow(r) { var o = {}; for (var k in r) o[k] = r[k]; o.replacesId 
 function strip(o) { var v = {}; for (var k in o) if (k !== '_row') v[k] = o[k]; return v; }
 
 /* ---------- emails ---------- */
-function sendMail(to, msg) {
+// from: {name, replyTo} — the person the email is from. The app runs as its owner, so the address is always the owner's;
+// the person's name shows as the sender and a reply goes to them.
+function sendMail(to, msg, from) {
   var list = [].concat(to).filter(Boolean); if (!list.length) return;
-  MailApp.sendEmail({ to: list.join(','), subject: msg.subject, body: msg.text, htmlBody: msg.html, name: S.app.emailSender });
+  var m = { to: list.join(','), subject: msg.subject, body: msg.text, htmlBody: msg.html, name: S.app.senderFor(from && from.name) };
+  if (from && from.replyTo) m.replyTo = from.replyTo;
+  MailApp.sendEmail(m);
+}
+function fromPerson(st, email) { return { name: nameOf(st, email), replyTo: DIL.norm(email) }; }
+
+/* Every email goes from the OWN address of the person it is from: a claim or booking from the teacher, a decision from the
+   approver. MailApp here can only send from the app owner's address, so the email waits in the script's properties for the
+   send page: a small separate project that runs as the visitor (build/sender). Its page posts the visitor's own Google
+   token to doPost, which asks Google whose token it is and hands over only that person's waiting emails; the page sends
+   them with MailApp as them and reports back. Anything it cannot send, and anything still waiting after ten minutes, the
+   app sends in their place as a short note (S.email.brief): who and what, never the details, so nothing about anyone's
+   days sits in the app owner's sent mail. With no send link set, everything is sent from the app at once, in full. */
+var MAIL_WAIT = 10 * 60000, MAIL_KEEP = 864e5;
+function outbox() { var all = PropertiesService.getScriptProperties().getProperties(), out = []; for (var k in all) if (k.indexOf('mail:') === 0) { try { out.push(JSON.parse(all[k])); } catch (err) {} } return out; }
+function putMail(m) { PropertiesService.getScriptProperties().setProperty('mail:' + m.id, JSON.stringify(m)); }
+function dropMail(id) { PropertiesService.getScriptProperties().deleteProperty('mail:' + id); }
+// Returns the waiting email's id, or '' when it went from the app at once.
+function personMail(st, fromEmail, to, kind, args) {
+  var from = fromPerson(st, fromEmail), list = [].concat(to).filter(Boolean).map(DIL.norm); if (!list.length) return '';
+  if (!String(st.cfg.sendUrl || '').trim()) { sendMail(list, S.email[kind](args), from); return ''; }
+  var m = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), from: from.replyTo, fromName: from.name, to: list.join(','), kind: kind, args: args, at: Date.now(), state: 'waiting' };
+  var json = JSON.stringify(m);
+  if (json.length < 8500) { PropertiesService.getScriptProperties().setProperty('mail:' + m.id, json); return m.id; }   // one property holds 9 KB
+  sendMail(list, S.email.brief(kind, args), from); return '';
+}
+function sendFromApp(m) {
+  try { sendMail(m.to.split(','), S.email.brief(m.kind, m.args), { name: m.fromName, replyTo: m.from }); m.state = 'app'; }
+  catch (err) { console.error('email ' + m.id + ': ' + err); m.state = 'failed'; }
+  m.doneAt = Date.now(); putMail(m);
+}
+function mailWaiting(m) { return m.state === 'waiting' || m.state === 'sending'; }
+function flushMail() {
+  var now = Date.now(), due = function (m) { return mailWaiting(m) ? now - m.at > MAIL_WAIT : now - (m.doneAt || m.at) > MAIL_KEEP; };
+  if (!outbox().some(due)) return;
+  withLock(function () { outbox().filter(due).forEach(function (m) { if (mailWaiting(m)) sendFromApp(m); else dropMail(m.id); }); });
+}
+// The send page, as its visitor: 'outbox' hands over their waiting emails ready to send; 'sent' reports which went.
+function mailPost(email, body) {
+  if (!email || !/@c2ken\.net$/.test(email)) return { ok: false, code: 'who' };
+  return withLock(function () {
+    var mine = outbox().filter(function (m) { return m.from === email; });
+    if (body.action === 'outbox') return { ok: true, mails: mine.filter(function (m) { return m.state === 'waiting'; }).slice(0, 20).map(function (m) {
+      m.state = 'sending'; m.claimedAt = Date.now(); putMail(m); var t = S.email[m.kind](m.args);
+      return { id: m.id, to: m.to, subject: t.subject, text: t.text, html: t.html };
+    }) };
+    var sent = [].concat(body.ids || []).map(String), failed = [].concat(body.failed || []).map(String);
+    mine.forEach(function (m) {
+      if (!mailWaiting(m)) return;
+      if (sent.indexOf(m.id) >= 0) { m.state = 'own'; m.doneAt = Date.now(); putMail(m); }
+      else if (failed.indexOf(m.id) >= 0) sendFromApp(m);
+    });
+    return { ok: true };
+  });
 }
 function approverEmails(st) { return DIL.approvers(st.staff).map(function (s) { return s.email; }); }
 
@@ -177,13 +234,14 @@ function doPost(e) {
   try {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     var who = googleProfile(String(body.token || ''));
-    if (who.email && who.name && /@c2ken\.net$/.test(who.email)) out = withLock(function () {
+    if (body.action === 'outbox' || body.action === 'sent') out = mailPost(who.email, body);
+    else if (who.email && who.name && /@c2ken\.net$/.test(who.email)) out = withLock(function () {
       var st = loadStore(), s = DIL.findStaff(who.email, st.staff);
       if (!s) return { ok: false, code: 'not_on_list' };
       if (!s.name) { s.name = who.name; saveRow('Staff', s); }
       return { ok: true, name: s.name };
     });
-  } catch (err) { console.error('name hand-in: ' + err); out = { ok: false, code: 'failed', why: String(err).slice(0, 200) }; }
+  } catch (err) { console.error('doPost: ' + err); out = { ok: false, code: 'failed', why: String(err).slice(0, 200) }; }
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 // Google's own answer to "whose token is this?" — OpenID userinfo. Staff accounts give an initial and surname ("D Gartland").
@@ -206,7 +264,7 @@ var API = {
     else if (reg.code === 'known' && !reg.row.name) { auto = displayName(email); if (auto) { reg.row.name = auto; withLock(function () { saveRow('Staff', reg.row); }); } }
     var s = email ? DIL.findStaff(email, st.staff) : null, role = email ? DIL.roleFor(email, st.staff) : 'unknown';
     return { ok: true, email: email, name: s ? s.name : '', autoName: auto, needName: !!(s && !s.name), removed: reg.code === 'removed', role: role, queueCount: queueCount(st, email), today: today(),
-             appUrl: appUrl(st), nameUrl: String(st.cfg.nameUrl || ''), sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
+             appUrl: appUrl(st), nameUrl: String(st.cfg.nameUrl || ''), sendUrl: String(st.cfg.sendUrl || '').trim(), sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
              year: DIL.currentYear(today(), st.cfg), window: DIL.requestWindow(today(), st.cfg), claimWindow: DIL.claimWindow(DIL.currentYear(today(), st.cfg), st.cfg) };
   },
   // Polled by the page while the name check runs in the background.
@@ -233,15 +291,15 @@ var API = {
       appendRow('Claims', claimRow(k)); return k;
     });
     st.claims.push(c);
-    sendMail(approverEmails(st), S.email.newClaim({ staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: appUrl(st) + '?c=' + c.claimId }));
-    return { ok: true, claim: claimView(st, c), balance: balanceOf(st, email, year) };
+    var mail = personMail(st, email, approverEmails(st), 'newClaim', { staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: appUrl(st) + '?c=' + c.claimId });
+    return { ok: true, claim: claimView(st, c), balance: balanceOf(st, email, year), mail: mail };
   },
   withdrawClaim: function (id) {
     var email = viewerEmail(); return withLock(function () {
       var st = loadStore(); need(st, email, 'staff'); var c = st.claims.filter(function (x) { return x.claimId === id && DIL.norm(x.staffEmail) === email; })[0]; if (!c) return { ok: false, code: 'not_found' };
       if (!DIL.canWithdrawClaim(c)) return { ok: false, code: 'not_pending', claim: claimView(st, c) };
       c.status = 'withdrawn'; saveRow('Claims', claimRow(c));
-      sendMail(approverEmails(st), S.email.claimWithdrawn({ staffName: c.staffName, claim: c, url: appUrl(st) })); return { ok: true };
+      return { ok: true, mail: personMail(st, email, approverEmails(st), 'claimWithdrawn', { staffName: c.staffName, claim: strip(c), url: appUrl(st) }) };
     });
   },
   // ----- staff: bookings -----
@@ -256,8 +314,8 @@ var API = {
       appendRow('Requests', requestRow(r)); st.requests.push(r);
       v.days.forEach(function (d, i) { var day = { dayId: id + '-' + (i + 1), requestId: id, staffEmail: email, staffName: s.name, date: d.date, portion: d.portion, value: d.value, reason: d.reason, status: 'pending', decisionNote: '', decidedAt: '', startYear: DIL.academicYearOf(d.date, st.cfg).startYear }; appendRow('Days', day); st.days.push(day); });
       var b = balanceOf(st, email, year);
-      sendMail(approverEmails(st), S.email.newRequest({ staffName: s.name, total: v.total, days: v.days, note: v.sharedReason, replaces: v.replaces, balance: b, url: appUrl(st) + '?r=' + id }));
-      return { ok: true, request: reqView(st, r), balance: b };
+      var mail = personMail(st, email, approverEmails(st), 'newRequest', { staffName: s.name, total: v.total, days: v.days, note: v.sharedReason, replaces: v.replaces, balance: b, url: appUrl(st) + '?r=' + id });
+      return { ok: true, request: reqView(st, r), balance: b, mail: mail };
     });
   },
   withdraw: function (id) {
@@ -265,14 +323,14 @@ var API = {
       var st = loadStore(); need(st, email, 'staff'); var r = st.requests.filter(function (x) { return x.id === id && DIL.norm(x.staffEmail) === email; })[0]; if (!r) return { ok: false, code: 'not_found' };
       var ds = st.days.filter(function (d) { return d.requestId === id; }); if (!DIL.canWithdraw(ds)) return { ok: false, code: 'not_pending' };
       ds.forEach(function (d) { if (d.status === 'pending') { d.status = 'withdrawn'; saveRow('Days', d); } });
-      sendMail(approverEmails(st), S.email.withdrawn({ staffName: r.staffName, total: DIL.total(ds), days: ds, url: appUrl(st) })); return { ok: true };
+      return { ok: true, mail: personMail(st, email, approverEmails(st), 'withdrawn', { staffName: r.staffName, total: DIL.total(ds), days: ds.map(strip), url: appUrl(st) }) };
     });
   },
   cancelDay: function (dayId) {
     var email = viewerEmail(); return withLock(function () {
       var st = loadStore(); need(st, email, 'staff'); var d = st.days.filter(function (x) { return x.dayId === dayId && DIL.norm(x.staffEmail) === email; })[0]; if (!d || !DIL.canCancelDay(d, today())) return { ok: false, code: 'not_allowed' };
       d.status = 'cancelled'; saveRow('Days', d);
-      sendMail(approverEmails(st), S.email.cancelled({ staffName: d.staffName, day: d, url: appUrl(st) })); return { ok: true };
+      return { ok: true, mail: personMail(st, email, approverEmails(st), 'cancelled', { staffName: d.staffName, day: strip(d), url: appUrl(st) }) };
     });
   },
   // ----- approver: to decide -----
@@ -290,10 +348,11 @@ var API = {
       var res = DIL.applyClaimDecision(c, decision, email, today(), { allowChange: !!allowChange }); if (!res.ok) return res;
       for (var k in res.claim) if (k !== '_row') c[k] = res.claim[k];
       var b = balanceOf(st, c.staffEmail, year);
-      // The email first, then the Sheet: a decision the person was never told about is not a decision.
-      sendMail(c.staffEmail, S.email.claimDecision({ first: DIL.firstName(c.staffName), principalName: st.cfg.principalName, claim: c, yearLabel: year.label, balance: b, url: appUrl(st) }));
-      saveRow('Claims', claimRow(c));
-      return { ok: true, claim: claimView(st, c), balance: b, queueCount: queueCount(st, email) };
+      // The email first, then the Sheet: a decision the person was never told about is not a decision. From the approver's
+      // own address it waits a moment for her send page (personMail); if the Sheet then fails, the waiting email goes too.
+      var mail = personMail(st, email, c.staffEmail, 'claimDecision', { first: DIL.firstName(c.staffName), principalName: st.cfg.principalName, claim: strip(c), yearLabel: year.label, balance: b, url: appUrl(st) });
+      try { saveRow('Claims', claimRow(c)); } catch (err) { if (mail) dropMail(mail); throw err; }
+      return { ok: true, claim: claimView(st, c), balance: b, queueCount: queueCount(st, email), mail: mail };
     });
   },
   decide: function (id, choices, notes, allowChange) {
@@ -303,9 +362,22 @@ var API = {
       res.days.forEach(function (nd) { var d = st.days.filter(function (x) { return x.dayId === nd.dayId; })[0]; for (var k in nd) if (k !== '_row') d[k] = nd[k]; });
       r.decisionNote = res.note; r.decidedAt = today(); r.decidedBy = email;
       var b = balanceOf(st, r.staffEmail, DIL.yearBounds(Number(r.startYear), st.cfg));
-      sendMail(r.staffEmail, S.email.decision({ first: DIL.firstName(r.staffName), principalName: st.cfg.principalName, submitted: r.submittedAt, days: res.days, outcome: res.outcome, note: r.decisionNote, yearLabel: r.year, balance: b, url: appUrl(st) }));
-      ds.forEach(function (d) { saveRow('Days', d); }); saveRow('Requests', requestRow(r));
-      return { ok: true, request: reqView(st, r), balance: b, queueCount: queueCount(st, email) };
+      var mail = personMail(st, email, r.staffEmail, 'decision', { first: DIL.firstName(r.staffName), principalName: st.cfg.principalName, submitted: r.submittedAt, days: res.days.map(strip), outcome: res.outcome, note: r.decisionNote, yearLabel: r.year, balance: b, url: appUrl(st) });
+      try { ds.forEach(function (d) { saveRow('Days', d); }); saveRow('Requests', requestRow(r)); } catch (err) { if (mail) dropMail(mail); throw err; }
+      return { ok: true, request: reqView(st, r), balance: b, queueCount: queueCount(st, email), mail: mail };
+    });
+  },
+  // The page watches its waiting emails (only the viewer's own); 'gone' = finished and cleared.
+  mailState: function (ids) {
+    var email = viewerEmail(), want = [].concat(ids || []).map(String), out = {};
+    outbox().forEach(function (m) { if (m.from === email && want.indexOf(m.id) >= 0) out[m.id] = m.state; });
+    want.forEach(function (id) { if (!out[id]) out[id] = 'gone'; }); return { ok: true, states: out };
+  },
+  // "Send from the app instead": the viewer's waiting emails go now, from the app, as short notes with their name on them.
+  mailFromApp: function (ids) {
+    var email = viewerEmail(), want = [].concat(ids || []).map(String); return withLock(function () {
+      var n = 0; outbox().forEach(function (m) { if (m.from === email && want.indexOf(m.id) >= 0 && (m.state === 'waiting' || (m.state === 'sending' && Date.now() - m.claimedAt > 60000))) { sendFromApp(m); n++; } });
+      return { ok: true, sent: n };
     });
   },
   decided: function (startYear) {

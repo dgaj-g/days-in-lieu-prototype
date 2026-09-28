@@ -354,4 +354,11 @@ h3.section:first-of-type { margin-top: 6px; }
 .door ol.steps { display: inline-block; text-align: left; margin: 4px auto 20px; padding-left: 22px; max-width: 26em; }
 .door a.btn { text-decoration: none; }
 .door ol.steps li { margin: 6px 0; }
+/* The send-from-my-email panel: sits over the corner, never over the whole page, so the queue can still be worked. */
+.ownmail{position:fixed;right:20px;bottom:20px;z-index:40;max-width:400px;width:calc(100% - 40px);padding:20px 22px}
+.ownmail h3{font-size:20px;margin-bottom:8px}
+.ownmail ol.steps{margin:8px 0 14px;padding-left:22px}
+.ownmail ol.steps li{margin:4px 0}
+.ownmail-btns{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+@media (max-width:600px){.ownmail{right:12px;left:12px;bottom:12px;width:auto;max-width:none}}
 </style>

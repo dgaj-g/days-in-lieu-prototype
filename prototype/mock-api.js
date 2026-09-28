@@ -161,6 +161,9 @@ window.DIL_API = (function () {
       var b = balanceOf(r.staffEmail, DIL.yearBounds(r.startYear, cfg));
       console.log('[mock email → ' + r.staffEmail + ']', S.email.decision({ first: DIL.firstName(r.staffName), principalName: cfg.principalName, submitted: r.submittedAt, days: res.days, outcome: res.outcome, note: r.decisionNote, yearLabel: r.year, balance: b, url: APP_URL }).subject);
       return { ok: true, request: reqView(r), balance: b, queueCount: queueCount() }; }); },
+    // The preview has no send page (whoami gives no sendUrl), so nothing ever waits: every decision email is sent at once.
+    mailState: function (ids) { return wait().then(function () { var o = {}; (ids || []).forEach(function (id) { o[id] = 'gone'; }); return { ok: true, states: o }; }); },
+    mailFromApp: function () { return wait().then(function () { return { ok: true, sent: 0 }; }); },
     decided: function (startYear) { return wait().then(function () { need('approver'); var year = startYear ? DIL.yearBounds(startYear, cfg) : DIL.currentYear(TODAY, cfg);
       var list = requests.filter(function (r) { return r.startYear === year.startYear; }).map(reqView).filter(function (r) { return r.status !== 'pending'; }).sort(function (a, b) { return (a.decidedAt || a.submittedAt) < (b.decidedAt || b.submittedAt) ? 1 : -1; });
       var cl = claims.filter(function (c) { return c.startYear === year.startYear && c.status !== 'pending'; }).map(claimView).sort(function (a, b) { return (a.decidedAt || a.submittedAt) < (b.decidedAt || b.submittedAt) ? 1 : -1; });

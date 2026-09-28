@@ -29,7 +29,7 @@ const ctx = {
   SpreadsheetApp: { getActive: () => book, getUi: () => { throw new Error('no ui'); } },
   Session: { getActiveUser: () => ({ getEmail: () => viewer }), getEffectiveUser: () => ({ getEmail: () => 'admin@c2ken.net' }), getScriptTimeZone: () => TZ },
   AdminDirectory: { Users: { get: (e) => { directory.calls++; if (directory.refuse[e]) throw new Error('API call to directory.users.get failed with error: Not Authorized to access this resource/api'); if (!directory.names[e]) throw new Error('Resource Not Found: userKey'); return { name: { fullName: directory.names[e] } }; } } },
-  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; } }) },
+  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); }, deleteProperty: (k) => { delete props[k]; }, getProperties: () => Object.assign({}, props) }) },
   MailApp: { sendEmail: (m) => { if (m.to.indexOf('@bounce.') >= 0) throw new Error('mail refused'); mails.push(m); } },
   HtmlService: { createTemplateFromFile: (n) => ({ evaluate() { return { setTitle() { return this; }, addMetaTag() { return this; }, setFaviconUrl() { return this; }, setXFrameOptionsMode() { return this; } }; } }), createHtmlOutputFromFile: () => ({ getContent: () => '' }), XFrameOptionsMode: { ALLOWALL: 1 } },
   Utilities: { formatDate: (d) => d.toISOString().slice(0, 10) },
@@ -63,7 +63,8 @@ eq([pr.role, pr.email, pr.removed], ['approver', 'fmcalinden045@c2ken.net', fals
 eq(rows('Staff').length, 2, 'no duplicate row for the alias');
 eq(D.norm('FMcAlinden045@OurLadysGrammar.Newry.NI.sch.uk'), 'fmcalinden045@c2ken.net', 'norm folds domain and case');
 eq(D.norm('chughes400@c2ken.net'), 'chughes400@c2ken.net', 'c2ken form unchanged');
-eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons', 'appUrl', 'nameUrl', 'claimsFrom'], 'config defaults');
+eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons', 'appUrl', 'nameUrl', 'claimsFrom', 'sendUrl'], 'config defaults');
+book.sheets.Config.rows.find(r => r[0] === 'sendUrl')[1] = '';   // sections 1–13: every email goes at once, as it did before the send link
 book.sheets.Closures.appendRow([weekday(3), weekday(3), 'Inset day']);
 let me = as('fmcalinden045@c2ken.net', 'whoami');
 eq([me.role, me.needName, me.queueCount, !!me.sheetUrl], ['approver', true, 0, true], 'principal whoami: approver, needs a name, sees the sheet');
@@ -174,11 +175,11 @@ eq(rows('Staff').length, 4, 'removed stays on the sheet as inactive');
 // 9. withdraw and cancel
 viewer = 'dgartland021@c2ken.net';
 let c2 = call('submitClaim', { reason: 'Netball final', workDays: [{ date: TODAY, portion: 'full' }] });
-eq(call('withdrawClaim', c2.claim.claimId), { ok: true }, 'withdraw a pending claim');
+eq(call('withdrawClaim', c2.claim.claimId), { ok: true, mail: '' }, 'withdraw a pending claim');
 eq(call('withdrawClaim', c2.claim.claimId).code, 'not_pending', 'cannot withdraw twice');
 eq(call('myDays').claims.length, 1, 'withdrawn claim hidden from my days');
 let up = call('myDays').summary.upcoming; eq(up.length, 1, 'one upcoming approved day');
-eq(call('cancelDay', up[0].dayId), { ok: true }, 'cancel an upcoming approved day');
+eq(call('cancelDay', up[0].dayId), { ok: true, mail: '' }, 'cancel an upcoming approved day');
 eq(call('myDays').balance.left, 1, 'cancelled day goes back into the balance');
 eq(call('cancelDay', up[0].dayId).code, 'not_allowed', 'cannot cancel twice');
 
@@ -244,5 +245,110 @@ book.sheets.Config.rows = book.sheets.Config.rows.filter(r => r[0] !== 'claimsFr
 eq(as('knew400@c2ken.net', 'whoami').claimWindow.from, D.claimWindow(year, { claimsFrom: '2026-07-01' }).from, 'no claimsFrom row in Config: the default 2026-07-01 applies');
 book.sheets.Config.rows.push(['claimsFrom', '', '']);
 eq(as('knew400@c2ken.net', 'whoami').claimWindow.start, year.start, 'claimsFrom cleared in Config: claims start with the year');
+
+// 14. Every email is from the person it is about. No send link: the app sends it at once, their name on it, replies to them.
+book.sheets.Staff.appendRow(['mailer600@c2ken.net', 'M Teacher', 'staff', 'yes']);
+const fRow = book.sheets.Staff.rows.find(r => r[0] === 'fmcalinden045@c2ken.net'); fRow[1] = 'F McAlinden';
+const mailsIn = () => Object.keys(props).filter(k => k.startsWith('mail:')).map(k => JSON.parse(props[k]));
+const cfgRow = book.sheets.Config.rows.find(r => r[0] === 'sendUrl'); cfgRow[1] = '';
+viewer = 'mailer600@c2ken.net'; mails = [];
+let k6r = call('submitClaim', { reason: 'Open night', workDays: [{ date: TODAY, portion: 'full' }] }), k6 = k6r.claim;
+eq([k6r.mail, lastMail().name, lastMail().replyTo, lastMail().to], ['', 'M Teacher · Days in Lieu', 'mailer600@c2ken.net', 'admin@c2ken.net,fmcalinden045@c2ken.net'], 'no send link: a new claim is emailed at once, the teacher by name, replies to the teacher');
+ok(/Open night/.test(lastMail().body), 'no send link: the full email as before', lastMail().subject);
+call('withdrawClaim', k6.claimId);
+eq([lastMail().name, lastMail().replyTo], ['M Teacher · Days in Lieu', 'mailer600@c2ken.net'], 'a withdrawn claim: the same');
+viewer = 'mailer600@c2ken.net'; k6 = call('submitClaim', { reason: 'Open night', workDays: [{ date: TODAY, portion: 'full' }] }).claim;
+viewer = 'fmcalinden045@c2ken.net'; mails = [];
+let d6 = call('decideClaim', k6.claimId, { approve: true, note: '' });
+eq([d6.ok, d6.mail, mails.length, lastMail().to, lastMail().name, lastMail().replyTo], [true, '', 1, 'mailer600@c2ken.net', 'F McAlinden · Days in Lieu', 'fmcalinden045@c2ken.net'], 'no send link: the decision is emailed at once, F McAlinden by name, replies to her');
+eq(as('fmcalinden045@c2ken.net', 'whoami').sendUrl, '', 'no send link: whoami gives none');
+// With the send link: every email waits for its sender's own address.
+cfgRow[1] = 'https://script.google.com/a/macros/c2ken.net/s/SEND/exec';
+eq([as('fmcalinden045@c2ken.net', 'whoami').sendUrl, as('mailer600@c2ken.net', 'whoami').sendUrl], [cfgRow[1], cfgRow[1]], 'whoami gives the send link to everyone');
+tokens.TF = { email: 'fmcalinden045@c2ken.net', name: 'F McAlinden' }; tokens.TA = { email: 'admin@c2ken.net', name: 'A Admin' }; tokens.TX = { email: 'someone@gmail.com', name: 'Some One' };
+tokens.TM = { email: 'mailer600@c2ken.net', name: 'M Teacher' };
+// A teacher's claim: waits for the teacher's own address, to every approver; nobody else can collect it.
+viewer = 'mailer600@c2ken.net'; mails = [];
+let s1 = call('submitClaim', { reason: 'Open night again', workDays: [{ date: TODAY, portion: 'full' }] }), ws1 = mailsIn().find(m => m.id === s1.mail);
+eq([s1.ok, mails.length, ws1 && ws1.state, ws1 && ws1.from, ws1 && ws1.to, ws1 && ws1.kind], [true, 0, 'waiting', 'mailer600@c2ken.net', 'admin@c2ken.net,fmcalinden045@c2ken.net', 'newClaim'], 'send link set: a new claim waits for the teacher\'s own address, to every approver');
+eq(post({ token: 'TF', action: 'outbox' }).mails.filter(m => m.id === s1.mail).length, 0, 'the Principal\'s token cannot collect the teacher\'s email');
+eq(as('fmcalinden045@c2ken.net', 'mailState', [s1.mail]).states[s1.mail], 'gone', 'nor see it'); viewer = 'mailer600@c2ken.net';
+let obm = post({ token: 'TM', action: 'outbox' });
+ok(obm.ok && obm.mails.length === 1 && obm.mails[0].id === s1.mail && /Open night again/.test(obm.mails[0].text), 'the teacher\'s own token: the full claim email, ready to send', obm.mails.map(m => m.subject));
+post({ token: 'TM', action: 'sent', ids: [s1.mail] });
+eq([call('mailState', [s1.mail]).states[s1.mail], mails.length], ['own', 0], 'reported sent: from the teacher\'s own address, nothing from the app');
+// The teacher's page cannot send: the app sends a short note, no details, so nothing about the claim sits in the app's sent mail.
+let s2 = call('withdrawClaim', s1.claim.claimId);
+eq([s2.ok, (mailsIn().find(m => m.id === s2.mail) || {}).kind], [true, 'claimWithdrawn'], 'a withdrawal waits too');
+post({ token: 'TM', action: 'outbox' }); mails = [];
+post({ token: 'TM', action: 'sent', ids: [], failed: [s2.mail] });
+eq([call('mailState', [s2.mail]).states[s2.mail], mails.length, lastMail().name, lastMail().replyTo, lastMail().subject], ['app', 1, 'M Teacher · Days in Lieu', 'mailer600@c2ken.net', 'Days in lieu: M Teacher withdrew a claim'], 'the teacher\'s page failed: a short note from the app, the teacher\'s name on it');
+ok(!/Open night/.test(lastMail().body + lastMail().htmlBody), 'the short note carries no details', lastMail().body);
+// A decision: waits for her own address.
+const claimFor = () => { viewer = 'mailer600@c2ken.net'; return call('submitClaim', { reason: 'Parents evening', workDays: [{ date: TODAY, portion: 'half' }] }).claim; };
+let k7 = claimFor(); viewer = 'fmcalinden045@c2ken.net'; mails = [];
+let d7 = call('decideClaim', k7.claimId, { approve: true, note: '' });
+let w7 = mailsIn().find(m => m.id === d7.mail);
+eq([d7.ok, mails.length, !!w7, w7 && w7.state, w7 && w7.from, w7 && w7.to, w7 && w7.kind], [true, 0, true, 'waiting', 'fmcalinden045@c2ken.net', 'mailer600@c2ken.net', 'claimDecision'], 'send link set: the decision waits, from her, to the teacher');
+eq(rows('Claims').find(r => r[0] === k7.claimId)[8], 'approved', 'the decision is saved while its email waits');
+eq(call('mailState', [d7.mail]).states[d7.mail], 'waiting', 'the page sees it waiting');
+eq(as('admin@c2ken.net', 'mailState', [d7.mail]).states[d7.mail], 'gone', 'another approver cannot see her emails'); viewer = 'fmcalinden045@c2ken.net';
+eq(post({ token: 'TA', action: 'outbox' }), { ok: true, mails: [] }, 'another approver\'s token gets none of her emails');
+eq(post({ token: 'TX', action: 'outbox' }).ok, false, 'an account outside c2ken gets nothing');
+eq(post({ token: 'nope', action: 'outbox' }).ok, false, 'a token Google does not know gets nothing');
+let ob = post({ token: 'TF', action: 'outbox' });
+eq([ob.ok, ob.mails.length, ob.mails[0].id, ob.mails[0].to], [true, 1, d7.mail, 'mailer600@c2ken.net'], 'her own token: her waiting email only, ready to send');
+ok(/Your claim for ½ day: approved/.test(ob.mails[0].subject) && /Parents evening/.test(ob.mails[0].text) && /<p/.test(ob.mails[0].html), 'rendered subject, text and html', ob.mails[0].subject);
+eq([mailsIn().find(m => m.id === d7.mail).state, post({ token: 'TF', action: 'outbox' }).mails.length], ['sending', 0], 'handed over once only');
+eq(post({ token: 'TA', action: 'sent', ids: [d7.mail] }), { ok: true }, 'another approver reporting it sent...');
+eq(mailsIn().find(m => m.id === d7.mail).state, 'sending', '...changes nothing');
+eq([post({ token: 'TF', action: 'sent', ids: [d7.mail], failed: [] }).ok, call('mailState', [d7.mail]).states[d7.mail], mails.length], [true, 'own', 0], 'reported sent: from her own address, nothing from the app');
+// Her page could not send it: a short note from the app, her name on it, no details.
+let k8 = claimFor(); viewer = 'fmcalinden045@c2ken.net'; let d8 = call('decideClaim', k8.claimId, { approve: false, note: 'Covered by TOIL already.' });
+post({ token: 'TF', action: 'outbox' }); mails = [];
+post({ token: 'TF', action: 'sent', ids: [], failed: [d8.mail] });
+eq([call('mailState', [d8.mail]).states[d8.mail], mails.length, lastMail().to, lastMail().name, lastMail().replyTo, lastMail().subject], ['app', 1, 'mailer600@c2ken.net', 'F McAlinden · Days in Lieu', 'fmcalinden045@c2ken.net', 'Days in lieu: your claim has been decided'], 'her page failed: a short note from the app, her name on it');
+ok(!/TOIL|not approved/.test(lastMail().body + lastMail().htmlBody) && /Hello M,/.test(lastMail().body), 'the short note greets the teacher and carries no details', lastMail().body);
+// Nothing waits more than ten minutes: the next call to the app, from anyone, sends it.
+let k9 = claimFor(); viewer = 'fmcalinden045@c2ken.net'; let d9 = call('decideClaim', k9.claimId, { approve: true, note: '' });
+let w9 = JSON.parse(props['mail:' + d9.mail]); w9.at -= 9 * 60000; props['mail:' + d9.mail] = JSON.stringify(w9); mails = [];
+as('mailer600@c2ken.net', 'myName'); eq([mails.length, as('fmcalinden045@c2ken.net', 'mailState', [d9.mail]).states[d9.mail]], [0, 'waiting'], 'nine minutes: still waiting for her address');
+w9 = JSON.parse(props['mail:' + d9.mail]); w9.at -= 2 * 60000; props['mail:' + d9.mail] = JSON.stringify(w9);
+as('mailer600@c2ken.net', 'myName'); eq([mails.length, lastMail().to, lastMail().subject, as('fmcalinden045@c2ken.net', 'mailState', [d9.mail]).states[d9.mail]], [1, 'mailer600@c2ken.net', 'Days in lieu: your claim has been decided', 'app'], 'eleven minutes: a short note from the app on the next call');
+// "Send from the app instead" — the sender's own only.
+let k10 = claimFor(); viewer = 'fmcalinden045@c2ken.net'; let d10 = call('decideClaim', k10.claimId, { approve: true, note: '' }); mails = [];
+eq([as('admin@c2ken.net', 'mailFromApp', [d10.mail]).sent, mails.length], [0, 0], 'another approver cannot send her emails');
+eq([as('fmcalinden045@c2ken.net', 'mailFromApp', [d10.mail]).sent, mails.length, lastMail().name, call('mailState', [d10.mail]).states[d10.mail]], [1, 1, 'F McAlinden · Days in Lieu', 'app'], 'Send from the app instead: sent now, her name on it');
+eq(call('mailFromApp', [d10.mail]).sent, 0, 'and never twice');
+// Bookings: the request waits for the teacher's address, the decision for hers.
+viewer = 'mailer600@c2ken.net'; let b11 = call('submit', { days: [{ date: weekday(12), portion: 'full', reason: '' }], sharedReason: 'Appointment' });
+if (!b11.ok) b11 = call('submit', { days: [{ date: weekday(13), portion: 'half', reason: '' }], sharedReason: 'Appointment' });
+ok(b11.ok, 'a booking to decide', b11);
+let wr = mailsIn().find(m => m.id === b11.mail);
+eq([wr && wr.kind, wr && wr.from, wr && wr.to, wr && wr.state], ['newRequest', 'mailer600@c2ken.net', 'admin@c2ken.net,fmcalinden045@c2ken.net', 'waiting'], 'a booking waits for the teacher\'s own address');
+viewer = 'fmcalinden045@c2ken.net'; mails = [];
+let bd = call('decide', b11.request.id, Object.fromEntries(b11.request.days.map(d => [d.dayId, 'approved'])), { general: '', days: {} });
+let wb = mailsIn().find(m => m.id === bd.mail);
+eq([bd.ok, mails.length, wb && wb.kind, wb && wb.state], [true, 0, 'decision', 'waiting'], 'a booking decision waits for her address too');
+ob = post({ token: 'TF', action: 'outbox' }); ok(ob.mails.length === 1 && /Appointment|approved/i.test(ob.mails[0].subject + ob.mails[0].text), 'and renders for her page', ob.mails[0] && ob.mails[0].subject);
+post({ token: 'TF', action: 'sent', ids: [bd.mail] });
+viewer = 'mailer600@c2ken.net'; let cd = call('cancelDay', b11.request.days[0].dayId);
+eq([cd.ok, (mailsIn().find(m => m.id === cd.mail) || {}).kind], [true, 'cancelled'], 'cancelling a booked day waits for the teacher\'s address too');
+let b12 = call('submit', { days: [{ date: weekday(14), portion: 'full', reason: '' }], sharedReason: 'Course' });
+if (b12.ok) { let wd = call('withdraw', b12.request.id); eq([wd.ok, (mailsIn().find(m => m.id === wd.mail) || {}).kind], [true, 'withdrawn'], 'withdrawing a booking waits too'); }
+// Every kind has a short note that names no reason, date or amount.
+['newClaim', 'claimWithdrawn', 'newRequest', 'withdrawn', 'cancelled', 'claimDecision', 'decision'].forEach(kind => {
+  const t = vm.runInContext('S', ctx).email.brief(kind, { staffName: 'M Teacher', principalName: 'the Principal', first: 'M', url: 'https://x/exec' });
+  ok(/^Days in lieu: /.test(t.subject) && /https:\/\/x\/exec/.test(t.text) && !/undefined/.test(t.subject + t.text + t.html), 'short note for ' + kind, t.subject);
+});
+// Finished entries are cleared after a day.
+const old = mailsIn().find(m => m.id === d7.mail); old.doneAt -= 864e5 + 1000; props['mail:' + d7.mail] = JSON.stringify(old);
+call('whoami'); eq([('mail:' + d7.mail) in props, call('mailState', [d7.mail]).states[d7.mail]], [false, 'gone'], 'a day after: cleared');
+// The Sheet fails after the email was queued: the waiting email is dropped with it.
+let k12 = claimFor(); viewer = 'fmcalinden045@c2ken.net'; const mailsBefore = mailsIn().length;
+const realSave = vm.runInContext('saveRow', ctx); vm.runInContext('saveRow = function () { throw new Error("sheet busy"); }', ctx);
+threw = false; try { call('decideClaim', k12.claimId, { approve: true, note: '' }); } catch (e) { threw = true; }
+ctx.__real = realSave; vm.runInContext('saveRow = __real', ctx);
+eq([threw, mailsIn().filter(m => m.state === 'waiting' && m.from === 'fmcalinden045@c2ken.net').length, mailsIn().length], [true, 0, mailsBefore], 'the Sheet failed: no email left waiting about a decision that was not saved');
 
 console.log(fails ? `\n${fails} of ${n} FAILED` : `\nall ${n} passed`); process.exit(fails ? 1 : 0);

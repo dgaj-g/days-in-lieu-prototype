@@ -16,6 +16,7 @@ var S = (function () {
       schoolLine: 'Our Lady’s Grammar School, Newry',
       title: 'Days in Lieu · Our Lady’s Grammar School',
       emailSender: 'Days in Lieu · Our Lady’s Grammar School',
+      senderFor: function (name) { return name ? name + ' · Days in Lieu' : S.app.emailSender; },   // an email the app sends for someone
       crestAlt: 'Our Lady’s Grammar School crest'
     },
     common: {
@@ -361,6 +362,19 @@ var S = (function () {
       bad_portion: 'Choose Full day, Morning or Afternoon for every day.', reason_too_long: 'Keep the note under 500 characters.',
       describe: function (p) { var m = S.dateProblem[p.code]; return typeof m === 'function' ? m(p) : (m || S.dateProblem.invalid); }
     },
+    // ---------- every email goes from the own address of the person it is from ----------
+    ownMail: {
+      queued: function (first) { return 'Done — ' + first + ' is being emailed from your own address.'; },
+      sentOwn: function (names) { return names.length === 1 ? 'Email to ' + names[0] + ' sent from your own address.' : names.length + ' emails sent from your own address.'; },
+      sentApp: function (names) { return names.length === 1 ? 'A short email to ' + names[0] + ' sent from the app, with your name on it.' : names.length + ' short emails sent from the app, with your name on them.'; },
+      failed: 'An email didn’t send. What you did is saved, so let them know yourself.',
+      title: 'Send from your own email',
+      body: 'Days in Lieu sends your emails from your own school email address. Google asks your OK for that once.',
+      steps: ['Press Continue with Google. A new tab opens.', 'If Google asks, press Review permissions and choose your school account.', 'If there is a box next to Send email as you, tick it. Then press Continue.', 'Come back to this tab. It carries on by itself.'],
+      button: 'Continue with Google',
+      fromApp: 'Send from the app instead',
+      watching: 'Waiting for Google…'
+    },
     // ---------- emails ----------
     email: {
       sender: 'Days in Lieu · Our Lady’s Grammar School',
@@ -370,6 +384,23 @@ var S = (function () {
       balanceLine: function (yearLabel, b) { return 'Days in lieu for ' + yearLabel + ': ' + fd(b.approved) + ' approved, ' + fd(b.booked) + ' booked, ' + fd(b.left) + ' left to book.'; },
       wrap: function (parts) { return parts.filter(Boolean).join('\n\n') + '\n\n— ' + S.email.footer; },
       wrapHtml: function (parts) { return parts.filter(Boolean).join('') + '<p style="color:#707070">— ' + esc(S.email.footer) + '</p>'; },
+      // What the app sends in someone's place when their own address could not be used: who and what, never the details.
+      brief: function (kind, c) {
+        var B = {
+          newClaim: [c.staffName + ' sent a claim', c.staffName + ' has sent a claim for days in lieu.', 'Open it to approve or decline'],
+          claimWithdrawn: [c.staffName + ' withdrew a claim', c.staffName + ' has withdrawn a claim. There is nothing to decide.', 'Open Days in Lieu'],
+          newRequest: [c.staffName + ' asked to book days', c.staffName + ' has asked to book days in lieu.', 'Open it to approve or decline'],
+          withdrawn: [c.staffName + ' withdrew a booking', c.staffName + ' has withdrawn a booking. There is nothing to decide.', 'Open Days in Lieu'],
+          cancelled: [c.staffName + ' cancelled a booked day', c.staffName + ' has cancelled a booked day.', 'Open Days in Lieu'],
+          claimDecision: ['your claim has been decided', cap(c.principalName) + ' has decided your claim.', 'See the decision'],
+          decision: ['your booking has been decided', cap(c.principalName) + ' has decided your booking.', 'See the decision']
+        }[kind], hello = c.first ? 'Hello ' + c.first + ',' : '';
+        return {
+          subject: 'Days in lieu: ' + B[0],
+          text: S.email.wrap([hello, B[1], B[2] + ':\n' + c.url]),
+          html: S.email.wrapHtml([hello ? '<p>' + esc(hello) + '</p>' : '', '<p>' + esc(B[1]) + '</p>', '<p><a href="' + esc(c.url) + '">' + esc(B[2]) + '</a></p>'])
+        };
+      },
       newClaim: function (c) { // {staffName, amount, reason, workDays, url}
         return {
           subject: 'Days in lieu: ' + c.staffName + ' claims ' + fd(c.amount),

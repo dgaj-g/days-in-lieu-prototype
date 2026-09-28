@@ -202,11 +202,11 @@ var DILApp = (function () {
   }
   function doWithdraw(btn) {
     var card = btn.closest('.req'), id = card.dataset.id; busy(btn, S.common.sendingEmail);
-    call('withdraw', id).then(function (r) { if (!r.ok) { if (r.code === 'not_pending') { toast(S.dash.decidedMeanwhile(who())); renderDashboard(); return; } throw 0; } toast(S.dash.withdrawn); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
+    call('withdraw', id).then(function (r) { if (!r.ok) { if (r.code === 'not_pending') { toast(S.dash.decidedMeanwhile(who())); renderDashboard(); return; } throw 0; } ownMail(r.mail, who()); toast(S.dash.withdrawn); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
   }
   function doWithdrawClaim(btn) {
     var card = btn.closest('.req'), id = card.dataset.id; busy(btn, S.common.sendingEmail);
-    call('withdrawClaim', id).then(function (r) { if (!r.ok) { if (r.code === 'not_pending') { toast(S.dash.claimDecidedMeanwhile(who())); renderDashboard(); return; } throw 0; } toast(S.dash.claimWithdrawn); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
+    call('withdrawClaim', id).then(function (r) { if (!r.ok) { if (r.code === 'not_pending') { toast(S.dash.claimDecidedMeanwhile(who())); renderDashboard(); return; } throw 0; } ownMail(r.mail, who()); toast(S.dash.claimWithdrawn); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
   }
   function askCancel(btn) {
     var li = btn.closest('li'), d = st.dash.summary.upcoming.filter(function (x) { return x.dayId === li.dataset.day; })[0];
@@ -215,7 +215,7 @@ var DILApp = (function () {
   }
   function doCancel(btn) {
     var d = st.dash.summary.upcoming.filter(function (x) { return x.dayId === btn.dataset.day; })[0]; busy(btn, S.common.sendingEmail);
-    call('cancelDay', d.dayId).then(function (r) { if (!r.ok) { if (r.code === 'not_allowed') { toast(S.dash.changedMeanwhile(who())); renderDashboard(); return; } throw 0; } toast(S.dash.cancelled(d.date)); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
+    call('cancelDay', d.dayId).then(function (r) { if (!r.ok) { if (r.code === 'not_allowed') { toast(S.dash.changedMeanwhile(who())); renderDashboard(); return; } throw 0; } ownMail(r.mail, who()); toast(S.dash.cancelled(d.date)); renderDashboard(); }).catch(function () { unbusy(btn); serverFailed(); });
   }
 
   /* ---------- Claim days (staff) ---------- */
@@ -292,7 +292,7 @@ var DILApp = (function () {
     setClaimMsg(''); busy(btn, S.claim.sending);
     call('submitClaim', sub).then(function (r) {
       if (!r.ok) { unbusy(btn); setClaimMsg(S.claimProblem.describe(r)); return; }
-      c.sent = true; c.leaveOK = true;
+      c.sent = true; c.leaveOK = true; ownMail(r.mail, who());
       $('#main').innerHTML = pageHead(S.claim.title, S.claim.sub(st.me.year.label, who(), (st.me.claimWindow || {}).from)) + '<div class="done-line">✓ ' + esc(S.claim.sentTitle) + '</div><div class="card" style="margin-top:16px"><p style="margin:0 0 14px">' + esc(S.claim.sentBody(who())) + '</p>' + staffClaimCard(r.claim) + '<p style="margin:18px 0 0"><button class="btn navy" data-act="tab" data-tab="dashboard">' + esc(S.claim.backToDays) + '</button></p></div>';
       window.scrollTo(0, 0);
     }).catch(function () { unbusy(btn); serverFailed(); });
@@ -422,7 +422,7 @@ var DILApp = (function () {
     setMsg(''); busy(btn, S.newReq.sending);
     call('submit', sub).then(function (r) {
       if (!r.ok) { unbusy(btn); setMsg(S.dateProblem.describe(r.detail || r)); return; }
-      n.sent = true; n.leaveOK = true;
+      n.sent = true; n.leaveOK = true; ownMail(r.mail, who());
       $('#main').innerHTML = pageHead(S.newReq.title, S.newReq.sub(r.balance ? r.balance.left : 0, st.me.window.year.label)) + '<div class="done-line">✓ ' + esc(S.newReq.sentTitle) + '</div><div class="card" style="margin-top:16px"><p style="margin:0 0 14px">' + esc(S.newReq.sentBody(who())) + '</p>' + staffRequestCard(r.request) + '<p style="margin:18px 0 0"><button class="btn navy" data-act="tab" data-tab="dashboard">' + esc(S.newReq.backToDays) + '</button></p></div>';
       window.scrollTo(0, 0);
     }).catch(function () { unbusy(btn); serverFailed(); });
@@ -503,8 +503,9 @@ var DILApp = (function () {
         msg.textContent = Q.failed; return;
       }
       if (typeof r.queueCount === 'number') setBadge(r.queueCount);
-      if (change) { card.outerHTML = decidedClaimCard(r.claim); toast(Q.done(first)); return; }
-      card.innerHTML = '<div class="done-line">✓ ' + esc(Q.done(first)) + '</div>';
+      var said = r.mail ? S.ownMail.queued(first) : Q.done(first); ownMail(r.mail, first);
+      if (change) { card.outerHTML = decidedClaimCard(r.claim); toast(said); return; }
+      card.innerHTML = '<div class="done-line">✓ ' + esc(said) + '</div>';
       setTimeout(function () { card.classList.add('leaving'); setTimeout(function () { if (!document.body.contains(card)) return; card.remove(); afterQueueLeave('claims'); }, 450); }, 1400);
     }).catch(function () { unbusy(btn); msg.textContent = Q.failed; serverFailed(); });
   }
@@ -580,11 +581,56 @@ var DILApp = (function () {
     call('decide', id, qs.choices, { general: qs.note.trim(), days: w.days }, change).then(function (r) {
       if (!r.ok) { unbusy(btn); if (r.code === 'withdrawn') { toast(S.queue.gone(first)); renderQueue(); return; } if (r.code === 'not_pending') { toast(S.queue.alreadyDecided); renderQueue(); return; } msg.textContent = r.code === 'day_note_required' ? S.queue.needDayNote(r.date) : S.queue.failed; return; }
       if (typeof r.queueCount === 'number') setBadge(r.queueCount);
-      if (change) { card.outerHTML = decidedCard(r.request); toast(S.queue.done(first)); return; }
-      card.innerHTML = '<div class="done-line">✓ ' + esc(S.queue.done(first)) + '</div>';
+      var said = r.mail ? S.ownMail.queued(first) : S.queue.done(first); ownMail(r.mail, first);
+      if (change) { card.outerHTML = decidedCard(r.request); toast(said); return; }
+      card.innerHTML = '<div class="done-line">✓ ' + esc(said) + '</div>';
       setTimeout(function () { card.classList.add('leaving'); setTimeout(function () { if (!document.body.contains(card)) return; card.remove(); afterQueueLeave('bookings'); }, 450); }, 1400);
     }).catch(function () { unbusy(btn); msg.textContent = S.queue.failed; serverFailed(); });
   }
+
+  /* ---------- every email from the visitor's own address ----------
+     The server keeps each email (a claim, a booking, a decision) waiting for the send page, a small project that runs as the
+     visitor. It loads hidden: once they have given Google their OK, the email leaves their own account in a second or two. The first time, Google
+     must ask, and it cannot ask inside a hidden frame, so after a short wait a panel offers the page in its own tab, or a
+     short note from the app instead. Whatever still waits after ten minutes, the server sends from the app as a short note. The watching is quiet:
+     no waiting line, one toast when the email has gone. */
+  var om = { items: {}, frame: null, loadedAt: 0, started: 0, timer: 0, shown: false };
+  function ownMail(id, first) {
+    if (!id || !st.me.sendUrl) return;
+    om.items[id] = { first: first, at: Date.now() };
+    if (!om.timer) { om.started = Date.now(); omFrame(); om.timer = setTimeout(omPoll, 1500); }
+  }
+  function omFrame() {
+    if (om.frame && om.frame.parentNode) om.frame.parentNode.removeChild(om.frame);
+    var u = st.me.sendUrl, f = document.createElement('iframe'); f.src = u + (u.indexOf('?') < 0 ? '?' : '&') + 'quiet=1'; f.title = S.ownMail.title; f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+    f.style.cssText = 'position:absolute;width:1px;height:1px;border:0;opacity:0;left:-9999px'; document.body.appendChild(f); om.frame = f; om.loadedAt = Date.now();
+  }
+  function omPoll() {
+    var ids = Object.keys(om.items); if (!ids.length || Date.now() - om.started > 12 * 60000) return omStop();
+    api().mailState(ids).then(function (r) {
+      var own = [], app = [], bad = 0, waiting = false, sending = false, M = S.ownMail;
+      ids.forEach(function (id) { var s = r.states[id], it = om.items[id]; if (s === 'waiting') waiting = true; else if (s === 'sending') sending = true; else { delete om.items[id]; if (s === 'own') own.push(it.first); else if (s === 'app') app.push(it.first); else if (s === 'failed') bad++; } });
+      if (bad) toast(M.failed, true); else if (app.length) toast(M.sentApp(app)); else if (own.length) toast(M.sentOwn(own));
+      var left = Object.keys(om.items); if (!left.length) return omStop();
+      // a decision made after the page last loaded: load it again once the earlier emails are out of its hands
+      if (waiting && !sending && left.some(function (id) { return om.items[id].at > om.loadedAt; })) omFrame();
+      if (waiting && !om.shown && left.some(function (id) { return Date.now() - om.items[id].at > 9000; })) omPanel();
+      om.timer = setTimeout(omPoll, om.shown ? 3000 : 1500);
+    }).catch(function () { om.timer = setTimeout(omPoll, 4000); });
+  }
+  function omPanel() {
+    var M = S.ownMail, p = document.createElement('div'); om.shown = true;
+    p.id = 'ownmail'; p.className = 'card ownmail'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-labelledby', 'ownmail-h');
+    p.innerHTML = '<h3 id="ownmail-h">' + esc(M.title) + '</h3><p>' + esc(M.body) + '</p><ol class="steps">' + M.steps.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ol>' +
+      '<div class="ownmail-btns"><a class="btn primary" href="' + esc(st.me.sendUrl) + '" target="_blank" rel="noopener">' + esc(M.button) + '</a><button type="button" class="btn quiet">' + esc(M.fromApp) + '</button></div>' +
+      '<p class="muted small">' + esc(M.watching) + '</p>';
+    document.body.appendChild(p);   // outside #app: a page change must not take it away
+    $('button', p).addEventListener('click', function () {
+      var b = this; if (isBusy(b)) return; busy(b, S.common.sendingEmail);
+      call('mailFromApp', Object.keys(om.items)).then(function () { clearTimeout(om.timer); omPoll(); }, function () { unbusy(b); serverFailed(); });
+    });
+  }
+  function omStop() { clearTimeout(om.timer); om.timer = 0; om.shown = false; var p = $('#ownmail'); if (p) p.remove(); if (om.frame && om.frame.parentNode) om.frame.parentNode.removeChild(om.frame); om.frame = null; }
 
   /* ---------- approver: Decided (two views) ---------- */
   function renderDecided() {
