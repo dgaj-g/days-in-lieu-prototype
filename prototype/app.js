@@ -589,10 +589,10 @@ var DILApp = (function () {
   }
 
   /* ---------- every email from the visitor's own address ----------
-     The server keeps each email (a claim, a booking, a decision) waiting for the send page, a small project that runs as the
-     visitor. It loads hidden: once they have given Google their OK, the email leaves their own account in a second or two. The first time, Google
+     The server keeps each email (a claim, a booking, a decision) waiting for the sign-in page, a small project that runs as the
+     visitor (the same one that reads their name). It loads hidden: once they have given Google their OK, the email leaves their own account in a second or two. The first time, Google
      must ask, and it cannot ask inside a hidden frame, so after a short wait a panel offers the page in its own tab, or a
-     short note from the app instead. Whatever still waits after ten minutes, the server sends from the app as a short note. The watching is quiet:
+     short note from the app instead. It opens with send=1: anyone who unticked "Send email as you" is asked for just that. Whatever still waits after ten minutes, the server sends from the app as a short note. The watching is quiet:
      no waiting line, one toast when the email has gone. */
   var om = { items: {}, frame: null, loadedAt: 0, started: 0, timer: 0, shown: false };
   function ownMail(id, first) {
@@ -622,7 +622,7 @@ var DILApp = (function () {
     var M = S.ownMail, p = document.createElement('div'); om.shown = true;
     p.id = 'ownmail'; p.className = 'card ownmail'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-labelledby', 'ownmail-h');
     p.innerHTML = '<h3 id="ownmail-h">' + esc(M.title) + '</h3><p>' + esc(M.body) + '</p><ol class="steps">' + M.steps.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ol>' +
-      '<div class="ownmail-btns"><a class="btn primary" href="' + esc(st.me.sendUrl) + '" target="_blank" rel="noopener">' + esc(M.button) + '</a><button type="button" class="btn quiet">' + esc(M.fromApp) + '</button></div>' +
+      '<div class="ownmail-btns"><a class="btn primary" href="' + esc(st.me.sendUrl + (st.me.sendUrl.indexOf('?') < 0 ? '?' : '&') + 'send=1') + '" target="_blank" rel="noopener">' + esc(M.button) + '</a><button type="button" class="btn quiet">' + esc(M.fromApp) + '</button></div>' +
       '<p class="muted small">' + esc(M.watching) + '</p>';
     document.body.appendChild(p);   // outside #app: a page change must not take it away
     $('button', p).addEventListener('click', function () {

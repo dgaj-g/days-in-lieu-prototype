@@ -22,7 +22,7 @@ Check before deploying:
 ## Deploying (needs a browser signed in to the school Google account — do this on the Mac)
 
 Deploy as the account that should **own the Sheet** (the Principal's, or a school admin account). Emails go from
-each person's own address through the send page (see *Emails from the person's own address*). The web app runs as that account for everyone ("execute as user deploying"), so it can read the Sheet
+each person's own address through the staff sign-in page (see *Emails from the person's own address*). The web app runs as that account for everyone ("execute as user deploying"), so it can read the Sheet
 and send mail while each visitor is identified by their own C2k sign-in.
 
 ### Route A — clasp (recommended: pushes all ten files in one command)
@@ -88,17 +88,16 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
   https://script.google.com/macros/s/AKfycbw1bp3S-nmIm3t0VKjod1vdxsehDv2pIXzSJT_fCDGlVzCa_2mCiEM3S268EuqqtI29/exec
   On every redeploy of the main link, move this deployment to the same new version too (it also takes the send
   page's `outbox` and `sent` posts). Version 10 since 28 Sep 2026 19:25.
-- **Send page** — the separate project "Days in Lieu · send from my email" (`build/sender/`, owner dgartland021,
-  script 1jM6Eje68wd0DQ6w4jSwcAewtBmUh-Q4fCvGr0PnyhuY8dpAcwaena4C9), Execute as **user accessing**, Anyone within
-  c2ken, scopes email + profile + send mail ONLY (Version 1). Config `sendUrl` = this link (also the built-in default):
-  https://script.google.com/a/macros/c2ken.net/s/AKfycbxdE0T9OX24xkzefYdVgm-g1FIA6VlNvB0bdVzDzyhR8sUOjWBzvMoi6728vdm-qGFu/exec
-  Its `HAND_IN_URL` = the hand-in link above.
-- **Name check** — the separate project "Days in Lieu · name check" (`build/companion/`, owner dgartland021), Execute
-  as **user accessing**, Anyone within c2ken, scopes email + profile ONLY (Version 2). Its page, not its server, posts
-  the visitor's token to the hand-in. Never add "external requests" to it: Google then shows an unticked "Connect to an
-  external service" box, and anyone who skips it fails:
+- **Staff sign-in** — the separate project first made as "Days in Lieu · name check" (`build/companion/`, owner
+  dgartland021), Execute as **user accessing**, Anyone within c2ken, scopes email + profile + send mail ONLY. One page,
+  two jobs: it hands in the visitor's name, and sends their waiting emails from their own address. Its page, not its
+  server, posts the visitor's token to the hand-in. Never add "external requests" to it: Google then shows an unticked
+  "Connect to an external service" box, and anyone who skips it fails. Config `nameUrl` AND `sendUrl` = this link
+  (`sendUrl` is also the built-in default):
   https://script.google.com/a/macros/c2ken.net/s/AKfycbwZOmDNY6pul_FnRfkqufqhEVKwTra-Dd0IpFq0KhV_E0Z7jHvjf40XgfVqUl-_fQlIzg/exec
-  Config `nameUrl` = this link. Its `HAND_IN_URL` = the hand-in link above.
+  Its `HAND_IN_URL` = the hand-in link above. Send mail merged in 28 Sep 2026 (his ruling: one Google screen at first
+  open, not a second one later). The old separate send project "Days in Lieu · send from my email" (`build/sender/`,
+  script 1jM6Eje68wd0DQ6w4jSwcAewtBmUh-Q4fCvGr0PnyhuY8dpAcwaena4C9) is no longer used; it was never granted by anyone.
 - Tested live: a claim sent, approved, a day booked and approved; the staff emails arrived with the note and the
   balance and link to /exec. Claims, Requests and Days were emptied afterwards.
 - Phones checked at 375 and 393 wide as staff and as the Principal; screenshots in
@@ -128,7 +127,7 @@ whose token it is (`userinfo`), requires an `@c2ken.net` address already on the 
 only (never overwrites, never adds a row). The page watches `myName` and carries on the moment the name lands.
 The first time, Google needs that person's OK, which cannot show in a frame: after 9 s the page shows *One
 step before you start* with a *Confirm with Google* button that opens the name check in a new tab; the person
-presses Review permissions, then Continue, and comes back, and the page carries on by itself (it watches for 15 minutes). Staff names
+presses Review permissions, ticks *Send email as you* if Google shows a box for it, then Continue, and comes back, and the page carries on by itself (it watches for 15 minutes). Staff names
 arrive as initial + surname, e.g. *F McAlinden*. There is no typing route (his ruling, 28 Sep 2026): the
 *Type your name instead* link and the *Change* name button are gone; only a blank `nameUrl` brings the old typed door back.
 
@@ -152,11 +151,15 @@ box: a claim, a booking, a withdrawal or a cancellation goes from the member of 
 goes from the Principal to the member of staff.
 
 * The action writes the Sheet and puts the email in a waiting list (ScriptProperties `mail:<id>`, one per email) and
-  returns its id. The page loads the send page (Config `sendUrl`) in a hidden frame. It runs as the person, asks the
+  returns its id. The page loads the staff sign-in page (Config `sendUrl`) in a hidden frame. It runs as the person, asks the
   hand-in for their own waiting emails (`outbox`, checked against Google's `userinfo`, so nobody gets anyone
   else's), sends them with `MailApp` as themselves, and reports back (`sent`). Only `@c2ken.net` addresses are sent.
-* The first time, Google needs the person's OK ("send email as you"), which cannot show in a frame. After 9 s a small
-  corner card offers **Continue with Google** (opens the send page in a new tab) or **Send from the app instead**.
+* "Send email as you" is asked on the same Google screen as the name, at first open. Google lets a person untick it:
+  the name still goes through and they get in; their emails then wait. Anyone who already signed in before 28 Sep 2026
+  (Damien, Fiona) is asked for that one permission at their next email. Either way, after 9 s a small corner card offers
+  **Continue with Google** (opens the page with `send=1`, which calls `ScriptApp.requireScopes` for send mail only) or
+  **Send from the app instead**. The page checks the grant with `ScriptApp.getAuthorizationInfo` and never asks the
+  hand-in for emails it cannot send.
 * The app sends in their place only a **short note with no details** (*"F McAlinden has sent a claim for days in lieu.
   Open it to approve or decline"* and the link): on *Send from the app instead*, when an email has waited over 10 minutes, or if the person's own
   send fails. Finished entries are cleared after a day.
@@ -183,5 +186,5 @@ Edit the Sheet by hand only for Staff, Config and Closures; the app writes the o
   no booking beyond approved days, a claim's amount is the sum of its days, fewer-than-claimed and declines need a note.
 * Writes take a script lock, and each write re-reads the Sheet first, so two people acting at once cannot cross.
 * A decision's email is made **before** the Sheet is written: sent from the app, if it fails nothing is saved and
-  the Principal sees "That didn't go through"; waiting for her send page, it is dropped if the Sheet write fails.
+  the Principal sees "That didn't go through"; waiting for her sign-in page, it is dropped if the Sheet write fails.
 * The browser only ever calls `api(name, args)`; the server checks the caller's role on every call.

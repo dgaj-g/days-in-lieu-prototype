@@ -26,9 +26,9 @@ var CONFIG_DEFAULTS = [
   ['principalName', 'the Principal', 'How the app refers to the approver in sentences, lower case.'],
   ['quickReasons', 'Residential trip, Weekend fixture, SEAG Help', 'Quick-fill buttons on the claim form, comma separated.'],
   ['appUrl', '', 'The web app link (Deploy → Manage deployments, ends /exec). Every email links here.'],
-  ['nameUrl', '', 'The name check link (the separate "Days in Lieu · name check" project, ends /exec). Blank = staff type their name.'],
+  ['nameUrl', '', 'The name check link (the separate "Days in Lieu · staff sign-in" project, ends /exec). Blank = staff type their name.'],
   ['claimsFrom', '2026-07-01', 'Earliest day a claim may cover (YYYY-MM-DD). Only reaches back into the year before; blank = start of the year.'],
-  ['sendUrl', 'https://script.google.com/a/macros/c2ken.net/s/AKfycbxdE0T9OX24xkzefYdVgm-g1FIA6VlNvB0bdVzDzyhR8sUOjWBzvMoi6728vdm-qGFu/exec', 'The send link (the separate "Days in Lieu · send from my email" project, ends /exec). Every email is then sent from the address of the person it is from. Blank = all from the app.']
+  ['sendUrl', 'https://script.google.com/a/macros/c2ken.net/s/AKfycbwZOmDNY6pul_FnRfkqufqhEVKwTra-Dd0IpFq0KhV_E0Z7jHvjf40XgfVqUl-_fQlIzg/exec', 'The send link (the "Days in Lieu · staff sign-in" project, the same link as nameUrl, ends /exec). Every email is then sent from the address of the person it is from. Blank = all from the app.']
 ];
 var NUMERIC = { Claims: ['AmountClaimed', 'AmountApproved', 'StartYear'], Requests: ['StartYear'], Days: ['Value', 'StartYear'] };   // per sheet: Config's Value column is text
 
@@ -150,7 +150,7 @@ function fromPerson(st, email) { return { name: nameOf(st, email), replyTo: DIL.
 
 /* Every email goes from the OWN address of the person it is from: a claim or booking from the teacher, a decision from the
    approver. MailApp here can only send from the app owner's address, so the email waits in the script's properties for the
-   send page: a small separate project that runs as the visitor (build/sender). Its page posts the visitor's own Google
+   sign-in page: a small separate project that runs as the visitor (build/companion; it also hands in the name). Its page posts the visitor's own Google
    token to doPost, which asks Google whose token it is and hands over only that person's waiting emails; the page sends
    them with MailApp as them and reports back. Anything it cannot send, and anything still waiting after ten minutes, the
    app sends in their place as a short note (S.email.brief): who and what, never the details, so nothing about anyone's
