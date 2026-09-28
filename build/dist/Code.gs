@@ -28,7 +28,7 @@ var CONFIG_DEFAULTS = [
   ['appUrl', '', 'The web app link (Deploy → Manage deployments, ends /exec). Every email links here.'],
   ['nameUrl', '', 'The name check link (the separate "Days in Lieu · name check" project, ends /exec). Blank = staff type their name.'],
   ['claimsFrom', '2026-07-01', 'Earliest day a claim may cover (YYYY-MM-DD). Only reaches back into the year before; blank = start of the year.'],
-  ['sendUrl', '', 'The send link (the separate "Days in Lieu · send from my email" project, ends /exec). Every email is then sent from the address of the person it is from. Blank = all from the app.']
+  ['sendUrl', 'https://script.google.com/a/macros/c2ken.net/s/AKfycbxdE0T9OX24xkzefYdVgm-g1FIA6VlNvB0bdVzDzyhR8sUOjWBzvMoi6728vdm-qGFu/exec', 'The send link (the separate "Days in Lieu · send from my email" project, ends /exec). Every email is then sent from the address of the person it is from. Blank = all from the app.']
 ];
 var NUMERIC = { Claims: ['AmountClaimed', 'AmountApproved', 'StartYear'], Requests: ['StartYear'], Days: ['Value', 'StartYear'] };   // per sheet: Config's Value column is text
 
