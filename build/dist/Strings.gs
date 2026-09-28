@@ -62,8 +62,7 @@ var S = (function () {
         askBody: 'Days in Lieu takes your name from your school account, so you never type it. Google asks your OK for that once.',
         steps: ['Press Confirm with Google. A new tab opens.', 'If Google asks, press Review permissions, choose your school account, then press Continue.', 'Come back to this tab. It carries on by itself.'],
         button: 'Confirm with Google',
-        watching: 'Waiting for Google…',
-        typeInstead: 'Google not working? Type your name instead'
+        watching: 'Waiting for Google…'
       },
       needName: {
         title: 'What should we call you?',

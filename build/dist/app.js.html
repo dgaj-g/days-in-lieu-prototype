@@ -98,7 +98,7 @@ var DILApp = (function () {
     var me = st.me, m = $('#main');
     if (!me.email) { m.innerHTML = '<div class="card door"><h2>' + esc(S.doors.signedOut.title) + '</h2><p>' + esc(S.doors.signedOut.body) + '</p><a class="btn primary" href="' + esc(me.appUrl || '#') + '" target="_top">' + esc(S.doors.signedOut.button) + '</a></div>'; return; }
     if (me.removed || me.role === 'unknown') { var R = S.doors.removed; m.innerHTML = '<div class="card door"><h2>' + esc(R.title) + '</h2><p>' + esc(R.body(me.email)) + '</p><p id="door-msg">' + esc(R.hint) + '</p><p class="small" style="margin-top:18px">' + esc(R.wrongAccount) + '</p></div>'; return; }
-    if (me.nameUrl && !st.typeName) { renderNameCheck(); return; }
+    if (me.nameUrl) { renderNameCheck(); return; }
     var N = S.doors.needName;
     m.innerHTML = '<div class="card door"><h2>' + esc(N.title) + '</h2><p>' + esc(N.body(me.email)) + '</p><label class="f" for="door-name">' + esc(N.nameLabel) + '</label><input type="text" id="door-name" placeholder="' + esc(N.namePlaceholder) + '" autocomplete="name"><div class="help bad" id="door-err"></div><button class="btn primary lg" data-act="door-name">' + esc(N.button) + '</button></div>';
     $('#door-name').focus();
@@ -106,7 +106,7 @@ var DILApp = (function () {
   /* The name comes from the visitor's own Google account, through the name check (a small page that runs as them).
      It loads hidden first: anyone who has already given Google their OK is named in a second or two, without seeing it.
      The first time, Google must ask, and it cannot ask inside a hidden frame, so after a short wait the page offers the
-     same check in its own tab and keeps watching for the name to arrive. Typing it is the last resort, never the ask. */
+     same check in its own tab and keeps watching for the name to arrive. There is no typing route: every name comes from Google. */
   function renderNameCheck() {
     var C = S.doors.nameCheck, m = $('#main'), started = Date.now(), shown = false;
     m.innerHTML = '<div class="card door"><h2>' + esc(C.title) + '</h2><p>' + esc(C.body) + '</p></div>';
@@ -117,13 +117,10 @@ var DILApp = (function () {
       shown = true; waitLine(false);
       m.innerHTML = '<div class="card door"><h2>' + esc(C.askTitle) + '</h2><p>' + esc(C.askBody) + '</p><ol class="steps">' + C.steps.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ol>' +
         '<a class="btn primary lg" href="' + esc(st.me.nameUrl) + '" target="_blank" rel="noopener">' + esc(C.button) + '</a>' +
-        '<p class="muted small" id="name-watch" style="margin-top:16px">' + esc(C.watching) + '</p>' +
-        '<p class="small" style="margin-top:18px"><button class="linkish" data-act="type-name">' + esc(C.typeInstead) + '</button></p></div>';
+        '<p class="muted small" id="name-watch" style="margin-top:16px">' + esc(C.watching) + '</p></div>';
     }
     (function poll() {
-      if (st.typeName) return;
       call('myName').then(function (r) {
-        if (st.typeName) return;
         if (r && r.name) { if (f.parentNode) f.parentNode.removeChild(f); st.me.name = r.name; st.me.needName = false; $('#app').innerHTML = shell(); toast(S.dash.shownAs(r.name)); go(st.me.role === 'approver' ? 'queue' : 'dashboard'); return; }
         if (!shown && Date.now() - started > 9000) offer();
         if (Date.now() - started < 15 * 60000) setTimeout(poll, shown ? 3000 : 1500);
@@ -739,7 +736,6 @@ var DILApp = (function () {
       case 'leave': if (st.nr) st.nr.leaveOK = true; if (st.cl) st.cl.leaveOK = true; go(t.dataset.to); break;
       case 'stay': t.closest('.leave-bar').remove(); break;
       case 'door-name': doorName(t); break;
-      case 'type-name': st.typeName = true; waitLine(false); renderDoor(); break;
       case 'name-edit': nameEdit(); break;
       case 'name-save': nameSave(t); break;
       case 'name-keep': go(st.tab); break;
