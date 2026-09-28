@@ -77,17 +77,17 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
 
 ## The live deployment (27 Sep 2026)
 
-- Web app, Version 10 from 28 Sep 2026 19:25 — emails from your own address (the URL never changes on a redeploy):
+- Web app, Version 11 from 28 Sep 2026 19:49 — one Google screen for name and email (the URL never changes on a redeploy):
   https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
 - The Sheet (dgartland021's C2k Drive; the script is bound to it):
   https://docs.google.com/spreadsheets/d/1mlAvXuCuH5tkB4udW1HSDN2f7neqlXHXjaWdcDxfOFA/edit
 - Execute as Me (dgartland021@c2ken.net), Anyone within c2ken. Staff tab: dgartland021 and fmcalinden045, both
-  approvers. Config `appUrl` = the link above. Closures filled from the school calendar for 2026–27.
+  approvers. Config `appUrl` = the link above. Config has no `sendUrl` or `claimsFrom` row: the built-in defaults apply. Closures filled from the school calendar for 2026–27.
 - **Name hand-in** (28 Sep 2026): a second deployment of the SAME project, Execute as Me, access **Anyone** (a
   domain-only deployment answers 401 to a server-to-server call). Only its `doPost` matters:
   https://script.google.com/macros/s/AKfycbw1bp3S-nmIm3t0VKjod1vdxsehDv2pIXzSJT_fCDGlVzCa_2mCiEM3S268EuqqtI29/exec
   On every redeploy of the main link, move this deployment to the same new version too (it also takes the send
-  page's `outbox` and `sent` posts). Version 10 since 28 Sep 2026 19:25.
+  page's `outbox` and `sent` posts). Version 11 since 28 Sep 2026 19:49.
 - **Staff sign-in** — the separate project first made as "Days in Lieu · name check" (`build/companion/`, owner
   dgartland021), Execute as **user accessing**, Anyone within c2ken, scopes email + profile + send mail ONLY. One page,
   two jobs: it hands in the visitor's name, and sends their waiting emails from their own address. Its page, not its
@@ -95,7 +95,7 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
   "Connect to an external service" box, and anyone who skips it fails. Config `nameUrl` AND `sendUrl` = this link
   (`sendUrl` is also the built-in default):
   https://script.google.com/a/macros/c2ken.net/s/AKfycbwZOmDNY6pul_FnRfkqufqhEVKwTra-Dd0IpFq0KhV_E0Z7jHvjf40XgfVqUl-_fQlIzg/exec
-  Its `HAND_IN_URL` = the hand-in link above. Send mail merged in 28 Sep 2026 (his ruling: one Google screen at first
+  Version 3 since 28 Sep 2026 19:47 ("Staff sign-in: name + send email as you"). Its `HAND_IN_URL` = the hand-in link above. Send mail merged in 28 Sep 2026 (his ruling: one Google screen at first
   open, not a second one later). The old separate send project "Days in Lieu · send from my email" (`build/sender/`,
   script 1jM6Eje68wd0DQ6w4jSwcAewtBmUh-Q4fCvGr0PnyhuY8dpAcwaena4C9) is no longer used; it was never granted by anyone.
 - Tested live: a claim sent, approved, a day booked and approved; the staff emails arrived with the note and the
@@ -138,8 +138,8 @@ function that uses UrlFetch once in the editor and approve. Without it every han
 "You do not have permission to call UrlFetchApp.fetch" in `why`. Granted 28 Sep 2026.
 
 Deployments (Manage deployments): the main staff link AKfycby5o… is labelled "Main staff link - emails from your
-own address" (Version 10); the hand-in AKfycbw1bp3S… (access Anyone) is labelled "Hand-in link - names and emails"
-(Version 10). Same code for doPost in both. Older labels sit under Archived: those are past versions, not lost links.
+own address" (Version 11); the hand-in AKfycbw1bp3S… (access Anyone) is labelled "Hand-in link - names and emails"
+(Version 11). Same code for doPost in both. Older labels sit under Archived: those are past versions, not lost links.
 
 The Review permissions screen says "Unverified" until C2k central marks school-built apps as trusted (request text:
 `Claude Work/_probes/c2k_trust_apps_request.txt`); after that it disappears with no change here.
