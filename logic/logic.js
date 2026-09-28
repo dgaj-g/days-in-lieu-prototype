@@ -114,6 +114,13 @@ var DIL = (function () {
     return { start: today, end: end, year: y, extended: extended };
   }
   function inYear(iso, year) { return iso >= year.start && iso <= year.end; }
+  // The days a claim may cover: the academic year, reaching back to Config "claimsFrom" (YYYY-MM-DD) when that date
+  // falls in the year just before, so the first year can take claims for the summer before it. It lapses by itself.
+  // from = the early start ('' when there is none). Works wherever a year does (inYear, claimMonths).
+  function claimWindow(year, cfg) {
+    var from = String((cfg && cfg.claimsFrom) || '').trim(), early = isValidISO(from) && from < year.start && academicYearOf(from, cfg).startYear === year.startYear - 1;
+    return { label: year.label, startYear: year.startYear, start: early ? from : year.start, end: year.end, from: early ? from : '', year: year };
+  }
 
   // ---------- typed dates ----------
   function monthIndex(word) {
@@ -184,9 +191,10 @@ var DIL = (function () {
   }
   function monthGrid(y, m, ctx) { return buildGrid(y, m, ctx.todayISO, function (iso) { return dateProblem(iso, ctx); }); }
   // The claim calendar: any day of the academic year may be picked (weekends and closures included — that is
-  // when the extra work happens). ctx: {todayISO, year}. The only problem a cell can have is date_outside_year.
+  // when the extra work happens). ctx: {todayISO, year, window?}. The only problem a cell can have is date_outside_year.
   function claimMonthGrid(y, m, ctx) {
-    return buildGrid(y, m, ctx.todayISO, function (iso) { return inYear(iso, ctx.year) ? null : { code: 'date_outside_year', year: ctx.year.label }; });
+    var w = ctx.window || ctx.year;
+    return buildGrid(y, m, ctx.todayISO, function (iso) { return inYear(iso, w) ? null : { code: 'date_outside_year', year: w.label, from: w.from || '', to: w.end }; });
   }
   function claimMonths(year) { return monthRange(year.start, year.end); }
   function monthRange(windowStart, windowEnd) {
@@ -347,7 +355,7 @@ var DIL = (function () {
     if (isValidISO(b) && inYear(b, year)) return b;
     return iso;
   }
-  // Validate a claim as it arrives at the server. sub: {reason, workDays:[{date, portion}] | 'iso,iso:half'}; ctx: {todayISO, year}.
+  // Validate a claim as it arrives at the server. sub: {reason, workDays:[{date, portion}] | 'iso,iso:half'}; ctx: {todayISO, year, window?}.
   // Codes: no_reason · reason_too_long · no_dates · bad_date · bad_portion · date_outside_year · amount_too_big
   function validateClaim(sub, ctx) {
     var reason = String((sub && sub.reason) || '').trim();
@@ -360,7 +368,8 @@ var DIL = (function () {
       var d = raw[i];
       if (!isValidISO(d.date)) return { ok: false, code: 'bad_date' };
       if (CLAIM_PORTIONS.indexOf(d.portion) < 0) return { ok: false, code: 'bad_portion', date: d.date };
-      if (!inYear(d.date, ctx.year)) return { ok: false, code: 'date_outside_year', year: ctx.year.label };
+      var w = ctx.window || ctx.year;
+      if (!inYear(d.date, w)) return { ok: false, code: 'date_outside_year', year: w.label, from: w.from || '', to: w.end };
       if (seen[d.date]) continue; seen[d.date] = true;
       days.push({ date: d.date, portion: d.portion });
     }
@@ -491,7 +500,7 @@ var DIL = (function () {
     toISO: toISO, parts: parts, isValidISO: isValidISO, addDays: addDays, daysBetween: daysBetween, weekdayIndex: weekdayIndex, isWeekend: isWeekend, todayISO: todayISO,
     formatLong: formatLong, formatShort: formatShort, formatFull: formatFull, formatMonth: formatMonth, formatUK: formatUK, formatDays: formatDays, formatDateList: formatDateList,
     portionValue: portionValue, total: total,
-    yearBounds: yearBounds, academicYearOf: academicYearOf, currentYear: currentYear, requestWindow: requestWindow, inYear: inYear,
+    yearBounds: yearBounds, academicYearOf: academicYearOf, currentYear: currentYear, requestWindow: requestWindow, inYear: inYear, claimWindow: claimWindow,
     parseTypedDate: parseTypedDate, dateProblem: dateProblem, closureFor: closureFor, monthGrid: monthGrid, monthRange: monthRange, claimMonthGrid: claimMonthGrid, claimMonths: claimMonths,
     nextRequestId: nextRequestId, requestStatus: requestStatus, validateSubmission: validateSubmission, applyDecision: applyDecision, joinWords: joinWords, canWithdraw: canWithdraw, canCancelDay: canCancelDay,
     isHalfStep: isHalfStep, nextClaimId: nextClaimId, parseClaimDate: parseClaimDate, parseWorkDays: parseWorkDays, workDaysCell: workDaysCell, claimTotal: claimTotal, validateClaim: validateClaim, applyClaimDecision: applyClaimDecision, canWithdrawClaim: canWithdrawClaim, balance: balance, canReduceClaim: canReduceClaim,

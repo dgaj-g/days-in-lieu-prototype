@@ -63,7 +63,7 @@ eq([pr.role, pr.email, pr.removed], ['approver', 'fmcalinden045@c2ken.net', fals
 eq(rows('Staff').length, 2, 'no duplicate row for the alias');
 eq(D.norm('FMcAlinden045@OurLadysGrammar.Newry.NI.sch.uk'), 'fmcalinden045@c2ken.net', 'norm folds domain and case');
 eq(D.norm('chughes400@c2ken.net'), 'chughes400@c2ken.net', 'c2ken form unchanged');
-eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons', 'appUrl', 'nameUrl'], 'config defaults');
+eq(rows('Config').map(r => r[0]), ['yearStartMonth', 'yearStartDay', 'yearOverride', 'nextYearOpens', 'principalName', 'quickReasons', 'appUrl', 'nameUrl', 'claimsFrom'], 'config defaults');
 book.sheets.Closures.appendRow([weekday(3), weekday(3), 'Inset day']);
 let me = as('fmcalinden045@c2ken.net', 'whoami');
 eq([me.role, me.needName, me.queueCount, !!me.sheetUrl], ['approver', true, 0, true], 'principal whoami: approver, needs a name, sees the sheet');
@@ -95,7 +95,20 @@ eq(rows('Claims')[0][4], D.workDaysCell(c1.claim.workDays), 'WorkDays cell holds
 eq([mails.length, lastMail().to], [1, 'admin@c2ken.net,fmcalinden045@c2ken.net'], 'claim email goes to every approver');
 ok(/claims/.test(lastMail().subject) && lastMail().htmlBody.indexOf('Open the claim') > 0, 'claim email subject and body', lastMail().subject);
 ok(lastMail().htmlBody.indexOf('/TEST/exec?c=') > 0, 'blank Config appUrl: email links to the service URL');
-eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Old', workDays: [{ date: D.addDays(year.start, -1), portion: 'full' }] }).code, 'date_outside_year', 'last year refused: no carry-over');
+eq(me.claimWindow, D.claimWindow(year, { claimsFrom: '2026-07-01' }), 'whoami hands the page the claim window (Config claimsFrom 2026-07-01)');
+eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Old', workDays: [{ date: D.addDays(me.claimWindow.start, -1), portion: 'full' }] }).code, 'date_outside_year', 'the day before the claim window refused: no carry-over');
+// The claim window: 2026–27 reaches back to 1 July 2026; later years do not; a bad setting is ignored.
+const y26 = D.yearBounds(2026, {}), y27 = D.yearBounds(2027, {}), w26 = D.claimWindow(y26, { claimsFrom: '2026-07-01' });
+eq([w26.start, w26.end, w26.from, w26.label], ['2026-07-01', '2027-08-31', '2026-07-01', y26.label], '2026–27 claims reach back to Wed 1 Jul 2026');
+eq([D.claimWindow(y27, { claimsFrom: '2026-07-01' }).start, D.claimWindow(y27, { claimsFrom: '2026-07-01' }).from], ['2027-09-01', ''], 'the July 2026 setting lapses in 2027–28');
+eq([D.claimWindow(y26, { claimsFrom: 'soon' }).start, D.claimWindow(y26, {}).start, D.claimWindow(y26, { claimsFrom: '2026-10-01' }).start, D.claimWindow(y26, { claimsFrom: '2025-06-01' }).start],
+   ['2026-09-01', '2026-09-01', '2026-09-01', '2026-09-01'], 'a blank, bad, later or two-years-back claimsFrom leaves the year start');
+eq(D.validateClaim({ reason: 'Summer school', workDays: [{ date: '2026-07-01', portion: 'full' }] }, { todayISO: '2026-09-28', year: y26, window: w26 }).ok, true, 'work on Wed 1 Jul 2026 can be claimed');
+const early = D.validateClaim({ reason: 'June', workDays: [{ date: '2026-06-30', portion: 'full' }] }, { todayISO: '2026-09-28', year: y26, window: w26 });
+eq([early.code, early.from, early.to], ['date_outside_year', '2026-07-01', '2027-08-31'], 'work on Tue 30 Jun 2026 refused');
+eq(vm.runInContext('S', ctx).claimProblem.describe(early), 'Claims can cover days from Wed 1 Jul 2026 to Tue 31 Aug 2027 only.', 'the refusal names the window');
+eq(D.claimMonths(w26)[0], { y: 2026, m: 7 }, 'the claim calendar opens back to July 2026');
+eq(D.claimMonthGrid(2026, 7, { todayISO: '2026-09-28', year: y26, window: w26 }).weeks.some(w => w.some(c => c.iso === '2026-07-01' && !c.problem)), true, 'Wed 1 Jul 2026 can be tapped on the claim calendar');
 eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Bad', workDays: [{ date: TODAY, portion: 'am' }] }).code, 'bad_portion', 'a booking portion is not a claim portion');
 
 // 4. cannot book before approval
@@ -226,5 +239,10 @@ pRow[1] = pWas;
 eq(post({}).ok, false, 'no token: refused');
 book.sheets.Config.rows.push(['nameUrl', 'https://script.google.com/a/macros/c2ken.net/s/NAME/exec', '']);
 eq(as('knew400@c2ken.net', 'whoami').nameUrl, 'https://script.google.com/a/macros/c2ken.net/s/NAME/exec', 'whoami hands the page the name check link');
+// A Sheet made before claimsFrom existed has no row for it: the built-in default still applies.
+book.sheets.Config.rows = book.sheets.Config.rows.filter(r => r[0] !== 'claimsFrom');
+eq(as('knew400@c2ken.net', 'whoami').claimWindow.from, D.claimWindow(year, { claimsFrom: '2026-07-01' }).from, 'no claimsFrom row in Config: the default 2026-07-01 applies');
+book.sheets.Config.rows.push(['claimsFrom', '', '']);
+eq(as('knew400@c2ken.net', 'whoami').claimWindow.start, year.start, 'claimsFrom cleared in Config: claims start with the year');
 
 console.log(fails ? `\n${fails} of ${n} FAILED` : `\nall ${n} passed`); process.exit(fails ? 1 : 0);

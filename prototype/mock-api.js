@@ -4,7 +4,7 @@
 window.DIL_API = (function () {
   'use strict';
   var TODAY = '2026-09-17', APP_URL = 'https://script.google.com/a/macros/c2ken.net/s/EXAMPLE/exec';
-  var cfg = { yearStartMonth: 9, yearStartDay: 1, yearOverride: '', nextYearOpens: '', principalName: 'the Principal',
+  var cfg = { yearStartMonth: 9, yearStartDay: 1, yearOverride: '', nextYearOpens: '', claimsFrom: '2026-07-01', principalName: 'the Principal',
               quickReasons: ['Residential trip', 'Weekend fixture', 'SEAG Help'] };
   var staff = [
     { email: 'dgartland021@c2ken.net', name: 'Damien Gartland', role: 'staff', active: 'yes' },
@@ -107,7 +107,7 @@ window.DIL_API = (function () {
     _forceWithdrawClaim: function (id) { claims.forEach(function (c) { if (c.claimId === id && c.status === 'pending') c.status = 'withdrawn'; }); },
     _forceDecideClaim: function (id) { claims.forEach(function (c) { if (c.claimId === id && c.status === 'pending') { c.status = 'approved'; c.amountApproved = c.amountClaimed; c.decidedAt = TODAY; c.decidedBy = P; } }); },
     whoami: function () { return wait().then(function () { var reg = viewer.email ? DIL.registerVisitor(staff, viewer.email, autoName()) : { code: 'no_email' }; if (reg.code === 'added') staff.push(reg.row);
-      var s = me(); return { ok: true, email: viewer.email, name: s ? s.name : '', autoName: autoName(), needName: !!(s && !s.name), removed: reg.code === 'removed', role: role(), queueCount: queueCount(), today: TODAY, appUrl: APP_URL, sheetUrl: 'https://docs.google.com/spreadsheets/d/EXAMPLE', cfg: { principalName: cfg.principalName, quickReasons: cfg.quickReasons }, year: DIL.currentYear(TODAY, cfg), window: DIL.requestWindow(TODAY, cfg) }; }); },
+      var s = me(); return { ok: true, email: viewer.email, name: s ? s.name : '', autoName: autoName(), needName: !!(s && !s.name), removed: reg.code === 'removed', role: role(), queueCount: queueCount(), today: TODAY, appUrl: APP_URL, sheetUrl: 'https://docs.google.com/spreadsheets/d/EXAMPLE', cfg: { principalName: cfg.principalName, quickReasons: cfg.quickReasons }, year: DIL.currentYear(TODAY, cfg), window: DIL.requestWindow(TODAY, cfg), claimWindow: DIL.claimWindow(DIL.currentYear(TODAY, cfg), cfg) }; }); },
     myName: function () { return wait().then(function () { var s = me(); return { ok: true, name: s ? s.name : '' }; }); },
     setMyName: function (name) { return wait().then(function () { need('any'); name = String(name || '').trim(); if (!name) return { ok: false, code: 'need_name' }; me().name = name; return { ok: true, name: name }; }); },
     // ----- staff: my days -----
@@ -118,7 +118,7 @@ window.DIL_API = (function () {
       return { ok: true, year: year, years: yearsSeen(viewer.email), requests: mine, claims: myClaims, balance: balanceOf(viewer.email, year), summary: DIL.summarise(myAll, TODAY, year), closures: closures, existing: myAll.map(function (d) { return { date: d.date, status: d.status }; }) }; }); },
     // ----- staff: claims -----
     submitClaim: function (sub) { return wait().then(function () { need('staff'); var s = me(), year = DIL.currentYear(TODAY, cfg); if (!s.name) return { ok: false, code: 'need_name' };
-      var v = DIL.validateClaim(sub, { todayISO: TODAY, year: year }); if (!v.ok) return v;
+      var v = DIL.validateClaim(sub, { todayISO: TODAY, year: year, window: DIL.claimWindow(year, cfg) }); if (!v.ok) return v;
       var c = { claimId: DIL.nextClaimId(claims.map(function (x) { return x.claimId; }), year), staffEmail: viewer.email, staffName: s.name, submittedAt: TODAY, workDays: v.claim.workDays, reason: v.claim.reason, amountClaimed: v.claim.amount, amountApproved: 0, status: 'pending', decisionNote: '', decidedAt: '', decidedBy: '', startYear: year.startYear };
       claims.push(c); console.log('[mock email → approvers]', S.email.newClaim({ staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: APP_URL + '?c=' + c.claimId }).subject);
       return { ok: true, claim: claimView(c), balance: balanceOf(viewer.email, year) }; }); },

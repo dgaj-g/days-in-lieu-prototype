@@ -134,14 +134,14 @@ var S = (function () {
     // ---------- Claim days (staff) ----------
     claim: {
       title: 'Claim days in lieu',
-      sub: function (yearLabel, who) { return 'For extra work done in ' + yearLabel + '. ' + cap(who) + ' approves the claim; then you can book the days.'; },
+      sub: function (yearLabel, who, from) { return (from ? 'For extra work done since ' + DIL.formatLong(from) : 'For extra work done in ' + yearLabel) + '. ' + cap(who) + ' approves the claim; then you can book the days.'; },
       step1: '1 · What did you do?',
       reasonLabel: 'The extra work',
       reasonPlaceholder: 'e.g. Year 10 residential, Friday 4 to Sunday 6 September',
       quickFill: 'Quick fill',
       step2: '2 · When was it?',
       dateLabel: 'Tap every day the work was on, then say whether each was a full or half day. They needn’t be together — three Saturdays is fine.',
-      dateHelp: function (yearLabel) { return 'Days in ' + yearLabel + ' only. Days in lieu don’t carry over, so work from an earlier year can’t be claimed.'; },
+      dateHelp: function (yearLabel, from, to) { return from ? 'Days from ' + DIL.formatLong(from) + ' to ' + DIL.formatLong(to) + ' only.' : 'Days in ' + yearLabel + ' only. Days in lieu don’t carry over, so work from an earlier year can’t be claimed.'; },
       pickedLabel: 'Days picked',
       pickedNone: 'Tap a day on the calendar and it appears here.',
       pickedTotal: function (n) { return 'That’s ' + fd(n) + ' in lieu.'; },
@@ -169,7 +169,7 @@ var S = (function () {
       no_dates: 'Pick the day, or days, the work was on first.',
       bad_portion: 'Choose Full day or Half day for every day.',
       bad_date: 'One of those days isn’t a real date. Pick the days again.',
-      date_outside_year: function (p) { return 'That day isn’t in ' + p.year + '. Days in lieu don’t carry over from an earlier year.'; },
+      date_outside_year: function (p) { return p.from ? 'Claims can cover days from ' + DIL.formatLong(p.from) + ' to ' + DIL.formatLong(p.to) + ' only.' : 'That day isn’t in ' + p.year + '. Days in lieu don’t carry over from an earlier year.'; },
       describe: function (p) { var m = S.claimProblem[p.code]; return typeof m === 'function' ? m(p) : (m || S.claimProblem.bad_date); }
     },
     // ---------- Book a day off (staff) ----------
