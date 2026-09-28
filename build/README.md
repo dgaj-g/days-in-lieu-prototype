@@ -74,7 +74,7 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
 
 ## The live deployment (27 Sep 2026)
 
-- Web app, Version 4 from 28 Sep 2026 (the URL never changes on a redeploy):
+- Web app, Version 8 from 28 Sep 2026 (the URL never changes on a redeploy):
   https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
 - The Sheet (dgartland021's C2k Drive; the script is bound to it):
   https://docs.google.com/spreadsheets/d/1mlAvXuCuH5tkB4udW1HSDN2f7neqlXHXjaWdcDxfOFA/edit
@@ -120,8 +120,8 @@ only (never overwrites, never adds a row). The page watches `myName` and carries
 The first time, Google needs that person's OK, which cannot show in a frame: after 9 s the page shows *One
 step before you start* with a *Confirm with Google* button that opens the name check in a new tab; the person
 presses Review permissions, then Continue, and comes back, and the page carries on by itself (it watches for 15 minutes). Staff names
-arrive as initial + surname, e.g. *F McAlinden*. A small *Google not working? Type your name instead* link keeps
-the old door as a last resort, and a blank `nameUrl` puts the old door back.
+arrive as initial + surname, e.g. *F McAlinden*. There is no typing route (his ruling, 28 Sep 2026): the
+*Type your name instead* link and the *Change* name button are gone; only a blank `nameUrl` brings the old typed door back.
 
 The owner is still named by the directory (`displayName`, Admin SDK) with no Google step at all.
 
