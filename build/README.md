@@ -74,12 +74,20 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
 
 ## The live deployment (27 Sep 2026)
 
-- Web app, Version 3 (the URL never changes on a redeploy):
+- Web app, Version 4 from 28 Sep 2026 (the URL never changes on a redeploy):
   https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
 - The Sheet (dgartland021's C2k Drive; the script is bound to it):
   https://docs.google.com/spreadsheets/d/1mlAvXuCuH5tkB4udW1HSDN2f7neqlXHXjaWdcDxfOFA/edit
 - Execute as Me (dgartland021@c2ken.net), Anyone within c2ken. Staff tab: dgartland021 and fmcalinden045, both
   approvers. Config `appUrl` = the link above. Closures filled from the school calendar for 2026–27.
+- **Name hand-in** (28 Sep 2026): a second deployment of the SAME project, Execute as Me, access **Anyone** (a
+  domain-only deployment answers 401 to a server-to-server call). Only its `doPost` matters:
+  https://script.google.com/macros/s/AKfycbw1bp3S-nmIm3t0VKjod1vdxsehDv2pIXzSJT_fCDGlVzCa_2mCiEM3S268EuqqtI29/exec
+  On every redeploy of the main link, move this deployment to the same new version too.
+- **Name check** — the separate project "Days in Lieu · name check" (`build/companion/`, owner dgartland021), Execute
+  as **user accessing**, Anyone within c2ken, scopes email + profile + external requests only:
+  https://script.google.com/a/macros/c2ken.net/s/AKfycbwZOmDNY6pul_FnRfkqufqhEVKwTra-Dd0IpFq0KhV_E0Z7jHvjf40XgfVqUl-_fQlIzg/exec
+  Config `nameUrl` = this link. Its `HAND_IN_URL` = the hand-in link above.
 - Tested live: a claim sent, approved, a day booked and approved; the staff emails arrived with the note and the
   balance and link to /exec. Claims, Requests and Days were emptied afterwards.
 - Phones checked at 375 and 393 wide as staff and as the Principal; screenshots in
@@ -102,22 +110,21 @@ c2ken.net), deployed and visited by `dgartland021@c2ken.net`:
 | Drive: share a file with the address (no email), read the permission's `displayName` | `fmcalinden045` — the username, not a name |
 | OpenID `userinfo` with `ScriptApp.getOAuthToken()` | the token owner only: `"name": "D Gartland"` |
 
-**What the app does.** `displayName(email)` in `Code.gs` asks the directory (advanced service **Admin SDK
-Directory API**, `AdminDirectory`, `directory_v1`; scope `https://www.googleapis.com/auth/admin.directory.user.readonly`)
-for `name.fullName`. `whoami` uses it for a newcomer and for a known row with a blank name; a name already on the
-Staff tab is never overwritten. When it returns nothing the name door asks, exactly as before.
+**What the app does (28 Sep 2026, his ruling: nobody is asked their name).** A member of staff whose Staff row
+has no name is never shown the name door. The page loads the name check (Config `nameUrl`) in a hidden frame; it
+runs as that person, takes their own token and posts it to the hand-in (`doPost` in `Code.gs`), which asks Google
+whose token it is (`userinfo`), requires an `@c2ken.net` address already on the Staff tab, and fills a BLANK name
+only (never overwrites, never adds a row). The page watches `myName` and carries on the moment the name lands.
+The first time, Google needs that person's Allow, which cannot show in a frame: after 9 s the page shows *One
+step before you start* with a *Confirm with Google* button that opens the name check in a new tab; the person
+presses Allow there and comes back, and the page carries on by itself (it watches for 15 minutes). Staff names
+arrive as initial + surname, e.g. *F McAlinden*. A small *Google not working? Type your name instead* link keeps
+the old door as a last resort, and a blank `nameUrl` puts the old door back.
 
-**Failure modes, all ending at the name door:** C2k refuses other accounts (`Not Authorized`) — after one refusal the
-lookup rests for a day, trying only the owner, so visits do not wait on it; no such account (`Resource Not Found`);
-a "name" that is only the username is ignored. On C2k today this means **the owner is named automatically and
-everyone else types their name once.** If C2k central ever lets ordinary accounts read the directory, names start
-arriving with no change to the code.
+The owner is still named by the directory (`displayName`, Admin SDK) with no Google step at all.
 
-**The route that would name everyone, and why it is not used.** A visitor's own name is only readable with the
-visitor's own token (`userinfo`, scope `userinfo.profile`), which needs a second deployment running **Execute as
-user accessing** and a relay into this one. Every member of staff would then meet Google's "unverified app"
-consent screen before the app opened, until C2k central marks the app as trusted — a worse first minute than typing
-one name. Revisit only if C2k trusts school-built apps.
+The Allow screen says "unverified app" until C2k central marks school-built apps as trusted (request text:
+`Claude Work/_probes/c2k_trust_apps_request.txt`); after that it disappears with no change here.
 
 ## How the Sheet holds things
 
