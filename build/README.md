@@ -117,15 +117,23 @@ has no name is never shown the name door. The page loads the name check (Config 
 runs as that person, takes their own token and posts it to the hand-in (`doPost` in `Code.gs`), which asks Google
 whose token it is (`userinfo`), requires an `@c2ken.net` address already on the Staff tab, and fills a BLANK name
 only (never overwrites, never adds a row). The page watches `myName` and carries on the moment the name lands.
-The first time, Google needs that person's Allow, which cannot show in a frame: after 9 s the page shows *One
+The first time, Google needs that person's OK, which cannot show in a frame: after 9 s the page shows *One
 step before you start* with a *Confirm with Google* button that opens the name check in a new tab; the person
-presses Allow there and comes back, and the page carries on by itself (it watches for 15 minutes). Staff names
+presses Review permissions, then Continue, and comes back, and the page carries on by itself (it watches for 15 minutes). Staff names
 arrive as initial + surname, e.g. *F McAlinden*. A small *Google not working? Type your name instead* link keeps
 the old door as a last resort, and a blank `nameUrl` puts the old door back.
 
 The owner is still named by the directory (`displayName`, Admin SDK) with no Google step at all.
 
-The Allow screen says "unverified app" until C2k central marks school-built apps as trusted (request text:
+The OWNER must also have granted the main project `script.external_request` (doPost calls `UrlFetchApp`): run any
+function that uses UrlFetch once in the editor and approve. Without it every hand-in answers `failed` with
+"You do not have permission to call UrlFetchApp.fetch" in `why`. Granted 28 Sep 2026.
+
+Deployments (Manage deployments): the main staff link AKfycby5o… is labelled "Main staff link - Google step
+wording" (Version 7); the name hand-in AKfycbw1bp3S… (access Anyone) shows as "Untitled" (Version 6). Same code for
+doPost in both.
+
+The Review permissions screen says "Unverified" until C2k central marks school-built apps as trusted (request text:
 `Claude Work/_probes/c2k_trust_apps_request.txt`); after that it disappears with no change here.
 
 ## How the Sheet holds things

@@ -60,7 +60,7 @@ var S = (function () {
         body: 'This takes a few seconds, the first time only.',
         askTitle: 'One step before you start',
         askBody: 'Days in Lieu takes your name from your school account, so you never type it. Google asks your OK for that once.',
-        steps: ['Press Confirm with Google. A new tab opens.', 'If Google asks, choose your school account, then press Allow.', 'Come back to this tab. It carries on by itself.'],
+        steps: ['Press Confirm with Google. A new tab opens.', 'If Google asks, press Review permissions, choose your school account, then press Continue.', 'Come back to this tab. It carries on by itself.'],
         button: 'Confirm with Google',
         watching: 'Waiting for Google…',
         typeInstead: 'Google not working? Type your name instead'
