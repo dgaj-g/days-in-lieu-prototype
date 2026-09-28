@@ -181,7 +181,7 @@ function doPost(e) {
       if (!s.name) { s.name = who.name; saveRow('Staff', s); }
       return { ok: true, name: s.name };
     });
-  } catch (err) { console.error('name hand-in: ' + err); out = { ok: false, code: 'failed' }; }
+  } catch (err) { console.error('name hand-in: ' + err); out = { ok: false, code: 'failed', why: String(err).slice(0, 200) }; }
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 // Google's own answer to "whose token is this?" — OpenID userinfo. Staff accounts give an initial and surname ("D Gartland").

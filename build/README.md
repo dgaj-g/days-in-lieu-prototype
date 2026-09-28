@@ -85,7 +85,9 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
   https://script.google.com/macros/s/AKfycbw1bp3S-nmIm3t0VKjod1vdxsehDv2pIXzSJT_fCDGlVzCa_2mCiEM3S268EuqqtI29/exec
   On every redeploy of the main link, move this deployment to the same new version too.
 - **Name check** — the separate project "Days in Lieu · name check" (`build/companion/`, owner dgartland021), Execute
-  as **user accessing**, Anyone within c2ken, scopes email + profile + external requests only:
+  as **user accessing**, Anyone within c2ken, scopes email + profile ONLY (Version 2). Its page, not its server, posts
+  the visitor's token to the hand-in. Never add "external requests" to it: Google then shows an unticked "Connect to an
+  external service" box, and anyone who skips it fails:
   https://script.google.com/a/macros/c2ken.net/s/AKfycbwZOmDNY6pul_FnRfkqufqhEVKwTra-Dd0IpFq0KhV_E0Z7jHvjf40XgfVqUl-_fQlIzg/exec
   Config `nameUrl` = this link. Its `HAND_IN_URL` = the hand-in link above.
 - Tested live: a claim sent, approved, a day booked and approved; the staff emails arrived with the note and the
