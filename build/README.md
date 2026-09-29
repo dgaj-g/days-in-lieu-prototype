@@ -73,10 +73,19 @@ If `clasp login` is refused ("access blocked"), C2k has not allowed the clasp OA
 9. Open the link on a phone and on a laptop as yourself and as a staff member; send a claim; approve it; book a day.
 
 To update the app later: change the prototype, `./build/make.sh`, `clasp push` (or paste again), then
-Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does not change.
+Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does not change. There is no clasp on this Mac:
+`zsh build/paste_update.sh` puts each file on the clipboard in turn (`signin` for the sign-in project's one file).
 
 ## The live deployment (27 Sep 2026)
 
+- **Deploy owed (commit 26105ea, 29 Sep 2026): main Version 13 + hand-in Version 13, sign-in Version 4** — nothing is ever
+  sent in anyone's place (see *Emails from the person's own address*). Do all three within a few minutes of each other:
+  1. Sign-in project ("Days in Lieu · name check"): `zsh build/paste_update.sh signin`, paste over `Code.gs`, Cmd+S,
+     Deploy ▸ Manage deployments ▸ pencil ▸ Version: New version ▸ Deploy (becomes Version 4).
+  2. Main project (the Sheet ▸ Extensions ▸ Apps Script): `zsh build/paste_update.sh`, paste the eight files one by
+     one, Cmd+S.
+  3. Deploy ▸ Manage deployments ▸ "Main staff link…" ▸ pencil ▸ Version: New version ▸ Deploy (becomes Version 13).
+  4. Same dialog ▸ "Hand-in link…" ▸ pencil ▸ Version: pick **13** from the list (not "New version") ▸ Deploy.
 - Web app, Version 12 since 29 Sep 2026 (checked 09:46; Version 11 + claim links `?claim=`) — one Google screen for name and email (the URL never changes on a redeploy):
   https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
 - The Sheet (dgartland021's C2k Drive; the script is bound to it):
@@ -146,7 +155,7 @@ own address" (Version 12); the hand-in AKfycbw1bp3S… (access Anyone) is labell
 The Review permissions screen says "Unverified" until C2k central marks school-built apps as trusted (request text:
 `Claude Work/_probes/c2k_trust_apps_request.txt`); after that it disappears with no change here.
 
-## Emails from the person's own address (28 Sep 2026, his ruling)
+## Emails from the person's own address (28 Sep 2026, his ruling; nothing sent in anyone's place since 29 Sep 2026)
 
 Every email a person causes goes from **their own** school address, so nobody's request sits in the owner's Sent
 box: a claim, a booking, a withdrawal or a cancellation goes from the member of staff to the approvers; a decision
@@ -156,17 +165,27 @@ goes from the Principal to the member of staff.
   returns its id. The page loads the staff sign-in page (Config `sendUrl`) in a hidden frame. It runs as the person, asks the
   hand-in for their own waiting emails (`outbox`, checked against Google's `userinfo`, so nobody gets anyone
   else's), sends them with `MailApp` as themselves, and reports back (`sent`). Only `@c2ken.net` addresses are sent.
-* "Send email as you" is asked on the same Google screen as the name, at first open. Google lets a person untick it:
-  the name still goes through and they get in; their emails then wait. Anyone who already signed in before 28 Sep 2026
-  (Damien, Fiona) is asked for that one permission at their next email. Either way, after 9 s a small corner card offers
-  **Continue with Google** (opens the page with `send=1`, which calls `ScriptApp.requireScopes` for send mail only) or
-  **Send from the app instead**. The page checks the grant with `ScriptApp.getAuthorizationInfo` and never asks the
-  hand-in for emails it cannot send.
-* The app sends in their place only a **short note with no details** (*"F McAlinden has sent a claim for days in lieu.
-  Open it to approve or decline"* and the link): on *Send from the app instead*, when an email has waited over 10 minutes, or if the person's own
-  send fails. Finished entries are cleared after a day.
-* Blank `sendUrl` = the old way: every email goes in full from the app at once.
-* Nothing is sent twice: `outbox` marks each email *sending* before it hands it over.
+* **Nothing is ever sent in anyone's place** (his ruling, 29 Sep 2026). Until then the app sent a short note from the
+  owner's address after 10 minutes: the Principal's first decision reached a teacher that way, "from" Damien, because
+  her name was already on file, so she never passed the sign-in page and never gave Google her OK to send. Now an
+  email waits for its sender's own address however long it takes, and one never collected is dropped after 14 days
+  (the decision or claim itself is saved and shows in the app).
+* Google cannot ask for its OK inside the hidden frame, so a box in the middle of the screen asks: **Continue with
+  Google** (the sign-in page in its own tab with `send=1`, which calls `ScriptApp.requireScopes` for send mail only) or
+  **Later** (the email keeps waiting). It comes 4 s after an email starts waiting for anyone whose send page has never
+  run (property `sendok:<email>`, set at their first `outbox`), 9 s for anyone else, and again every time they open
+  Days in Lieu while an email waits (whoami `mailWaiting`). Tab stays inside it; Escape is Later.
+* A send that failed is marked *failed* and both pages say so ("let them know yourself"); a send that never ran is
+  handed straight back (`back`) to be tried again; a hand-over the page never reports waits again after 5 minutes (a
+  lost report can mean an email goes twice, never that it goes nowhere). Finished entries are cleared after a day.
+* Stale emails are dropped, never sent: a claim or booking withdrawn before its email went sends nothing at all; a
+  decision drops the teacher's waiting "new claim" email; a changed decision replaces the one still waiting.
+* An email too long for one property (9 KB) waits as a short note instead (who and what, with the link), still from
+  the person's own address.
+* Blank `sendUrl` = the owner's switch: every email goes in full from the app at once, the person's name on it,
+  replies to them.
+* Google delivers these emails, not Outlook (C2k mail is Microsoft 365): they carry Outlook's EXTERNAL banner and do not
+  appear in the sender's Outlook Sent Items. The From address is truly the sender's own.
 
 ## How the Sheet holds things
 
