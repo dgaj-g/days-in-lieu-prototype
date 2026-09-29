@@ -5,7 +5,7 @@ const dist = path.join(__dirname, '..', 'dist');
 const src = ['Logic.gs', 'Strings.gs', 'Code.gs'].map(f => fs.readFileSync(path.join(dist, f), 'utf8')).join('\n');
 
 /* ---------- stand-ins ---------- */
-let viewer = '', TZ = 'Europe/London', mails = [];
+let viewer = '', TZ = 'Europe/London', mails = [], allMail = [];
 // The directory: names it will give, accounts it refuses (as C2k refuses everyone but the owner), and a call count.
 const directory = { names: {}, refuse: {}, calls: 0 }, props = {};
 // Google's userinfo: what each token belongs to (the name check posts the visitor's own token).
@@ -30,7 +30,7 @@ const ctx = {
   Session: { getActiveUser: () => ({ getEmail: () => viewer }), getEffectiveUser: () => ({ getEmail: () => 'admin@c2ken.net' }), getScriptTimeZone: () => TZ },
   AdminDirectory: { Users: { get: (e) => { directory.calls++; if (directory.refuse[e]) throw new Error('API call to directory.users.get failed with error: Not Authorized to access this resource/api'); if (!directory.names[e]) throw new Error('Resource Not Found: userKey'); return { name: { fullName: directory.names[e] } }; } } },
   PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); }, deleteProperty: (k) => { delete props[k]; }, getProperties: () => Object.assign({}, props) }) },
-  MailApp: { sendEmail: (m) => { if (m.to.indexOf('@bounce.') >= 0) throw new Error('mail refused'); mails.push(m); } },
+  MailApp: { sendEmail: (m) => { if (m.to.indexOf('@bounce.') >= 0) throw new Error('mail refused'); mails.push(m); allMail.push(m); } },
   HtmlService: { createTemplateFromFile: (n) => ({ evaluate() { return { setTitle() { return this; }, addMetaTag() { return this; }, setFaviconUrl() { return this; }, setXFrameOptionsMode() { return this; } }; } }), createHtmlOutputFromFile: () => ({ getContent: () => '' }), XFrameOptionsMode: { ALLOWALL: 1 } },
   Utilities: { formatDate: (d) => d.toISOString().slice(0, 10) },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
@@ -95,7 +95,7 @@ eq(c1.claim.workDays, workDays.slice().sort((a, b) => a.date < b.date ? -1 : 1),
 eq(rows('Claims')[0][4], D.workDaysCell(c1.claim.workDays), 'WorkDays cell holds the compact form');
 eq([mails.length, lastMail().to], [1, 'admin@c2ken.net,fmcalinden045@c2ken.net'], 'claim email goes to every approver');
 ok(/claims/.test(lastMail().subject) && lastMail().htmlBody.indexOf('Open the claim') > 0, 'claim email subject and body', lastMail().subject);
-ok(lastMail().htmlBody.indexOf('/TEST/exec?c=') > 0, 'blank Config appUrl: email links to the service URL');
+ok(lastMail().htmlBody.indexOf('/TEST/exec?claim=') > 0, 'blank Config appUrl: email links to the service URL');
 eq(me.claimWindow, D.claimWindow(year, { claimsFrom: '2026-07-01' }), 'whoami hands the page the claim window (Config claimsFrom 2026-07-01)');
 eq(as('dgartland021@c2ken.net', 'submitClaim', { reason: 'Old', workDays: [{ date: D.addDays(me.claimWindow.start, -1), portion: 'full' }] }).code, 'date_outside_year', 'the day before the claim window refused: no carry-over');
 // The claim window: 2026–27 reaches back to 1 July 2026; later years do not; a bad setting is ignored.
@@ -351,4 +351,10 @@ threw = false; try { call('decideClaim', k12.claimId, { approve: true, note: '' 
 ctx.__real = realSave; vm.runInContext('saveRow = __real', ctx);
 eq([threw, mailsIn().filter(m => m.state === 'waiting' && m.from === 'fmcalinden045@c2ken.net').length, mailsIn().length], [true, 0, mailsBefore], 'the Sheet failed: no email left waiting about a decision that was not saved');
 
+// Google reserves the link parameters c and sid: a web-app link carrying either is refused before doGet runs
+// ("Sorry, unable to open the file at present", the Principal's first claim link, 29 Sep 2026). No email may carry one.
+const reservedParam = (s) => /\/exec\?(?:[^\s"'<>]*?(?:&amp;|&|;))?(?:c|sid)=/.test(String(s));
+ok(reservedParam('https://x/exec?c=CLM-1') && reservedParam('https://x/exec?a=1&amp;sid=2') && !reservedParam('https://x/exec?claim=CLM-1'), 'control: the reserved-parameter check bites');
+const everyMail = allMail.map(m => [m.htmlBody, m.body].join(' '));
+ok(everyMail.length > 5 && everyMail.some(t => /exec\?claim=/.test(t)) && !everyMail.some(reservedParam), 'no email links with a parameter Google reserves (c, sid)', everyMail.filter(reservedParam).slice(0, 1));
 console.log(fails ? `\n${fails} of ${n} FAILED` : `\nall ${n} passed`); process.exit(fails ? 1 : 0);

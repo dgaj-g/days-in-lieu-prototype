@@ -36,7 +36,9 @@ var NUMERIC = { Claims: ['AmountClaimed', 'AmountApproved', 'StartYear'], Reques
 function doGet(e) {
   var p = (e && e.parameter) || {}, boot = {};
   var email = viewerEmail();
-  if ((p.c || p.r) && email) { var st = loadStore(); if (DIL.roleFor(email, st.staff) === 'approver') boot.tab = 'queue'; }
+  // Claim links carry ?claim=, never ?c=: Google reserves the link parameters c and sid and refuses such a link before
+  // doGet runs ("Sorry, unable to open the file at present" — the Principal's first claim link, 29 Sep 2026).
+  if ((p.claim || p.r) && email) { var st = loadStore(); if (DIL.roleFor(email, st.staff) === 'approver') boot.tab = 'queue'; }
   var t = HtmlService.createTemplateFromFile('index');
   t.boot = JSON.stringify(boot);
   return t.evaluate().setTitle(S.app.title)
@@ -291,7 +293,7 @@ var API = {
       appendRow('Claims', claimRow(k)); return k;
     });
     st.claims.push(c);
-    var mail = personMail(st, email, approverEmails(st), 'newClaim', { staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: appUrl(st) + '?c=' + c.claimId });
+    var mail = personMail(st, email, approverEmails(st), 'newClaim', { staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: appUrl(st) + '?claim=' + c.claimId });
     return { ok: true, claim: claimView(st, c), balance: balanceOf(st, email, year), mail: mail };
   },
   withdrawClaim: function (id) {

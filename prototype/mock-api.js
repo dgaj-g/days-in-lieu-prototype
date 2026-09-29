@@ -120,7 +120,7 @@ window.DIL_API = (function () {
     submitClaim: function (sub) { return wait().then(function () { need('staff'); var s = me(), year = DIL.currentYear(TODAY, cfg); if (!s.name) return { ok: false, code: 'need_name' };
       var v = DIL.validateClaim(sub, { todayISO: TODAY, year: year, window: DIL.claimWindow(year, cfg) }); if (!v.ok) return v;
       var c = { claimId: DIL.nextClaimId(claims.map(function (x) { return x.claimId; }), year), staffEmail: viewer.email, staffName: s.name, submittedAt: TODAY, workDays: v.claim.workDays, reason: v.claim.reason, amountClaimed: v.claim.amount, amountApproved: 0, status: 'pending', decisionNote: '', decidedAt: '', decidedBy: '', startYear: year.startYear };
-      claims.push(c); console.log('[mock email → approvers]', S.email.newClaim({ staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: APP_URL + '?c=' + c.claimId }).subject);
+      claims.push(c); console.log('[mock email → approvers]', S.email.newClaim({ staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: APP_URL + '?claim=' + c.claimId }).subject);
       return { ok: true, claim: claimView(c), balance: balanceOf(viewer.email, year) }; }); },
     withdrawClaim: function (id) { return wait().then(function () { need('staff'); var c = claims.filter(function (x) { return x.claimId === id && x.staffEmail === viewer.email; })[0]; if (!c) return { ok: false, code: 'not_found' };
       if (!DIL.canWithdrawClaim(c)) return { ok: false, code: 'not_pending', claim: claimView(c) };
