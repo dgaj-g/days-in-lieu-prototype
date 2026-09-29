@@ -78,15 +78,7 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
 
 ## The live deployment (27 Sep 2026)
 
-- **Deploy owed (commit 26105ea, 29 Sep 2026): main Version 13 + hand-in Version 13, sign-in Version 4** — nothing is ever
-  sent in anyone's place (see *Emails from the person's own address*). Do all three within a few minutes of each other:
-  1. Sign-in project ("Days in Lieu · name check"): `zsh build/paste_update.sh signin`, paste over `Code.gs`, Cmd+S,
-     Deploy ▸ Manage deployments ▸ pencil ▸ Version: New version ▸ Deploy (becomes Version 4).
-  2. Main project (the Sheet ▸ Extensions ▸ Apps Script): `zsh build/paste_update.sh`, paste the eight files one by
-     one, Cmd+S.
-  3. Deploy ▸ Manage deployments ▸ "Main staff link…" ▸ pencil ▸ Version: New version ▸ Deploy (becomes Version 13).
-  4. Same dialog ▸ "Hand-in link…" ▸ pencil ▸ Version: pick **13** from the list (not "New version") ▸ Deploy.
-- Web app, Version 12 since 29 Sep 2026 (checked 09:46; Version 11 + claim links `?claim=`) — one Google screen for name and email (the URL never changes on a redeploy):
+- Web app, Version 13 since 29 Sep 2026 19:41 (commit 26105ea: nothing is ever sent in anyone's place; hand-in link also Version 13, sign-in project Version 4) — one Google screen for name and email (the URL never changes on a redeploy):
   https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
 - The Sheet (dgartland021's C2k Drive; the script is bound to it):
   https://docs.google.com/spreadsheets/d/1mlAvXuCuH5tkB4udW1HSDN2f7neqlXHXjaWdcDxfOFA/edit

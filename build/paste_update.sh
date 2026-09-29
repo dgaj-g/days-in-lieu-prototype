@@ -11,7 +11,7 @@ i=0
 for f in $files; do
   (( i++ )); LC_CTYPE=en_US.UTF-8 pbcopy < "$f"
   print "[$i/${#files}] ${f:t} is on your clipboard."
-  print "      In the editor: click ${f:t} in the list on the left, press Cmd+A, then Cmd+V."
+  print "      In the editor: click ${f:t} in the list on the left, click anywhere in its code, press Cmd+A, then Cmd+V."
   if [[ -t 0 ]]; then read -r "?      Press Return here for the next file. " _; print; else print "      (Not a terminal: stopping after this one.)"; break; fi
 done
 print "Done. Press Cmd+S in the editor to save, then deploy (build/README.md, \"The live deployment\")."
