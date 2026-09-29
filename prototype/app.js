@@ -590,11 +590,13 @@ var DILApp = (function () {
 
   /* ---------- every email from the visitor's own address ----------
      The server keeps each email (a claim, a booking, a decision) waiting for the sign-in page, a small project that runs as the
-     visitor (the same one that reads their name). It loads hidden: once they have given Google their OK, the email leaves their own account in a second or two. The first time, Google
-     must ask, and it cannot ask inside a hidden frame, so after a short wait a panel offers the page in its own tab, or a
-     short note from the app instead. It opens with send=1: anyone who unticked "Send email as you" is asked for just that. Whatever still waits after ten minutes, the server sends from the app as a short note. The watching is quiet:
-     no waiting line, one toast when the email has gone. */
-  var om = { items: {}, frame: null, loadedAt: 0, started: 0, timer: 0, shown: false };
+     visitor (the same one that reads their name). It loads hidden: once they have given Google their OK, the email leaves their
+     own account in a second or two, and one toast says so. Google cannot ask for that OK inside a hidden frame, so if the email
+     is still waiting a moment later, a box in the middle of the screen asks for it, in its own tab (send=1: anyone who unticked
+     "Send email as you" is asked for just that). Nothing is ever sent in their place: Later leaves the email waiting, and the box
+     comes back the next time they open Days in Lieu (boot) or send another. Someone whose send page has never run with Google's
+     OK (st.me.ownSend false) is asked after four seconds, anyone else after nine. */
+  var om = { items: {}, frame: null, loadedAt: 0, started: 0, timer: 0, shown: false, back: null };
   function ownMail(id, first) {
     if (!id || !st.me.sendUrl) return;
     om.items[id] = { first: first, at: Date.now() };
@@ -602,35 +604,58 @@ var DILApp = (function () {
   }
   function omFrame() {
     if (om.frame && om.frame.parentNode) om.frame.parentNode.removeChild(om.frame);
-    var u = st.me.sendUrl, f = document.createElement('iframe'); f.src = u + (u.indexOf('?') < 0 ? '?' : '&') + 'quiet=1'; f.title = S.ownMail.title; f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+    var u = st.me.sendUrl, f = document.createElement('iframe'); f.src = u + (u.indexOf('?') < 0 ? '?' : '&') + 'quiet=1'; f.title = S.ownMail.frame; f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
     f.style.cssText = 'position:absolute;width:1px;height:1px;border:0;opacity:0;left:-9999px'; document.body.appendChild(f); om.frame = f; om.loadedAt = Date.now();
   }
   function omPoll() {
-    var ids = Object.keys(om.items); if (!ids.length || Date.now() - om.started > 12 * 60000) return omStop();
+    var ids = Object.keys(om.items); if (!ids.length) return omStop();
+    if (Date.now() - om.started > 30 * 60000) return omStop(true);   // still waiting after half an hour: asked again next time
     api().mailState(ids).then(function (r) {
-      var own = [], app = [], bad = 0, waiting = false, sending = false, M = S.ownMail;
-      ids.forEach(function (id) { var s = r.states[id], it = om.items[id]; if (s === 'waiting') waiting = true; else if (s === 'sending') sending = true; else { delete om.items[id]; if (s === 'own') own.push(it.first); else if (s === 'app') app.push(it.first); else if (s === 'failed') bad++; } });
-      if (bad) toast(M.failed, true); else if (app.length) toast(M.sentApp(app)); else if (own.length) toast(M.sentOwn(own));
+      var own = [], bad = 0, waiting = false, sending = false, again = false, M = S.ownMail;
+      ids.forEach(function (id) {
+        var s = r.states[id], it = om.items[id]; if (!it) return;
+        if (s === 'waiting') { waiting = true; if (it.s === 'sending') again = true; } else if (s === 'sending') { sending = true; st.me.ownSend = true; }
+        else { delete om.items[id]; if (s === 'own') { own.push(it.first); st.me.ownSend = true; } else if (s === 'failed') bad++; }
+        it.s = s;
+      });
+      if (bad) toast(M.failed, true); else if (own.length) toast(M.sentOwn(own));
       var left = Object.keys(om.items); if (!left.length) return omStop();
-      // a decision made after the page last loaded: load it again once the earlier emails are out of its hands
+      if (om.shown) { omWords(); if (again) $('#ownmail-w').textContent = M.laterNote(left.length); }   // a send that never ran: they can try again
+      // an email queued after the page last loaded: load it again once the earlier emails are out of its hands
       if (waiting && !sending && left.some(function (id) { return om.items[id].at > om.loadedAt; })) omFrame();
-      if (waiting && !om.shown && left.some(function (id) { return Date.now() - om.items[id].at > 9000; })) omPanel();
+      if (waiting && !om.shown && left.some(function (id) { return Date.now() - om.items[id].at > (st.me.ownSend ? 9000 : 4000); })) omPanel();
       om.timer = setTimeout(omPoll, om.shown ? 3000 : 1500);
     }).catch(function () { om.timer = setTimeout(omPoll, 4000); });
   }
+  function omNames() { return Object.keys(om.items).map(function (id) { return om.items[id].first; }); }
+  function omWords() { var M = S.ownMail, names = omNames(), h = $('#ownmail-h'), b = $('#ownmail-b'); if (h) h.textContent = M.title(names); if (b) b.textContent = M.body(names.length); }
   function omPanel() {
-    var M = S.ownMail, p = document.createElement('div'); om.shown = true;
-    p.id = 'ownmail'; p.className = 'card ownmail'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-labelledby', 'ownmail-h');
-    p.innerHTML = '<h3 id="ownmail-h">' + esc(M.title) + '</h3><p>' + esc(M.body) + '</p><ol class="steps">' + M.steps.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ol>' +
-      '<div class="ownmail-btns"><a class="btn primary" href="' + esc(st.me.sendUrl + (st.me.sendUrl.indexOf('?') < 0 ? '?' : '&') + 'send=1') + '" target="_blank" rel="noopener">' + esc(M.button) + '</a><button type="button" class="btn quiet">' + esc(M.fromApp) + '</button></div>' +
-      '<p class="muted small">' + esc(M.watching) + '</p>';
-    document.body.appendChild(p);   // outside #app: a page change must not take it away
-    $('button', p).addEventListener('click', function () {
-      var b = this; if (isBusy(b)) return; busy(b, S.common.sendingEmail);
-      call('mailFromApp', Object.keys(om.items)).then(function () { clearTimeout(om.timer); omPoll(); }, function () { unbusy(b); serverFailed(); });
+    var M = S.ownMail, n = omNames().length, u = st.me.sendUrl, bg = document.createElement('div'); om.shown = true;
+    bg.id = 'ownmail'; bg.className = 'ownmail-bg';
+    bg.innerHTML = '<div class="card ownmail" role="dialog" aria-modal="true" aria-labelledby="ownmail-h" aria-describedby="ownmail-b"><h3 id="ownmail-h"></h3><p id="ownmail-b"></p>' +
+      '<ol class="steps">' + M.steps.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ol>' +
+      '<div class="ownmail-btns"><a class="btn primary" data-om="go" href="' + esc(u + (u.indexOf('?') < 0 ? '?' : '&') + 'send=1') + '" target="_blank" rel="noopener">' + esc(M.button) + '</a>' +
+      '<button type="button" class="btn quiet" data-om="later">' + esc(M.later) + '</button></div>' +
+      '<p class="muted small" id="ownmail-w" aria-live="polite">' + esc(M.laterNote(n)) + '</p></div>';
+    document.body.appendChild(bg);   // outside #app: a page change must not take it away
+    omWords(); om.back = document.activeElement; $('[data-om=go]', bg).focus();
+    bg.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-om]'); if (!b) return;
+      if (b.dataset.om === 'later') omLater(); else $('#ownmail-w').textContent = M.watching;   // the link opens Google's page in its own tab
+    });
+    bg.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); omLater(); return; }
+      if (e.key !== 'Tab') return;   // keep the keys inside the box
+      var f = $$('[data-om]', bg), i = f.indexOf(document.activeElement); e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus();
     });
   }
-  function omStop() { clearTimeout(om.timer); om.timer = 0; om.shown = false; var p = $('#ownmail'); if (p) p.remove(); if (om.frame && om.frame.parentNode) om.frame.parentNode.removeChild(om.frame); om.frame = null; }
+  function omLater() { var n = omNames().length; omStop(true); toast(S.ownMail.laterToast(n)); }
+  // keep: the emails are still waiting, so a later email in this visit brings the box back with all of them
+  function omStop(keep) {
+    clearTimeout(om.timer); om.timer = 0; om.shown = false; if (!keep) om.items = {};
+    var p = $('#ownmail'); if (p) { p.remove(); if (om.back && document.body.contains(om.back) && om.back.focus) om.back.focus(); } om.back = null;
+    if (om.frame && om.frame.parentNode) om.frame.parentNode.removeChild(om.frame); om.frame = null;
+  }
 
   /* ---------- approver: Decided (two views) ---------- */
   function renderDecided() {
@@ -848,6 +873,7 @@ var DILApp = (function () {
       var first = me.role === 'approver' ? 'queue' : 'dashboard';
       if (window.DIL_BOOT && window.DIL_BOOT.tab) first = window.DIL_BOOT.tab;
       go(first);
+      (me.mailWaiting || []).forEach(function (w) { ownMail(w.id, w.first); });   // emails still waiting from an earlier visit
     }).catch(function () { $('#main').innerHTML = errorCard(); waitLine(false); });
   }
   return { boot: boot, go: go, state: function () { return st; } };

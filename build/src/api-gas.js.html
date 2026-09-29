@@ -4,7 +4,7 @@
 window.DIL_API = (function () {
   'use strict';
   var NAMES = ['whoami', 'myName', 'setMyName', 'myDays', 'submitClaim', 'withdrawClaim', 'submit', 'withdraw', 'cancelDay',
-               'queue', 'decideClaim', 'decide', 'mailState', 'mailFromApp', 'decided', 'overview', 'csv', 'staffList', 'staffAdd', 'staffRemove', 'staffRole'];
+               'queue', 'decideClaim', 'decide', 'mailState', 'decided', 'overview', 'csv', 'staffList', 'staffAdd', 'staffRemove', 'staffRole'];
   function call(name, args) {
     return new Promise(function (resolve, reject) {
       google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).api(name, args);

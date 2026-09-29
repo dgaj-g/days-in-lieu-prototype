@@ -7,7 +7,7 @@
       them from their own address and reports which went.
    The posts are made by the page, not the server, so Google asks for three things only: name, email, "Send email as you".
    Google lets a visitor untick "Send email as you". The name still goes through; the emails wait, and Days in Lieu offers
-   this page again (?send=1, which asks Google for just that one permission) or sends a short note from the app instead.
+   this page again (?send=1, which asks Google for just that one permission). Nothing is ever sent in the visitor's place.
    Opened hidden inside Days in Lieu (?quiet=1); opened in its own tab when Google first needs the visitor's OK. */
 var HAND_IN_URL = 'https://script.google.com/macros/s/AKfycbw1bp3S-nmIm3t0VKjod1vdxsehDv2pIXzSJT_fCDGlVzCa_2mCiEM3S268EuqqtI29/exec';   // the main project's hand-in deployment (Anyone), ends /exec — set at deploy
 var SEND_SCOPE = 'https://www.googleapis.com/auth/script.send_mail';
@@ -22,32 +22,34 @@ function doGet(e) {
     + 'var d = ' + data + ';\n'
     + 'function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\\"": "&quot;" }[c]; }); }\n'
     + 'function post(body) { body.token = d.token; return fetch(d.url, { method: "POST", body: JSON.stringify(body) }).then(function (r) { return r.json(); }); }\n'
-    + 'function report(sent, failed) { var b = { action: "sent", ids: sent, failed: failed }; return post(b).catch(function () { return post(b); }); }\n'
-    // mail: "" nothing tried or nothing waiting, "own" all sent from their address, "app" some went from the app, "bad" the waiting emails couldn't be fetched
+    + 'function report(b) { b.action = "sent"; return post(b).catch(function () { return post(b); }); }\n'
+    // mail: k "" nothing tried or nothing waiting, "own" all sent from their address (n of them), "failed" one or more couldn't be
+    // sent (final: the visitor is told to pass it on), "later" none went and they still wait (the waiting emails couldn't be
+    // fetched, or the send itself never ran: "back" hands them straight back so the visitor can try again)
     + 'function mail() {\n'
-    + '  if (!d.send) return Promise.resolve("");\n'
+    + '  if (!d.send) return Promise.resolve({ k: "" });\n'
     + '  return post({ action: "outbox" }).then(function (out) {\n'
-    + '    if (!out || !out.ok) return "bad";\n'
-    + '    var mails = out.mails || [], ids = mails.map(function (m) { return m.id; }); if (!mails.length) return "";\n'
+    + '    if (!out || !out.ok) return { k: "later" };\n'
+    + '    var mails = out.mails || [], ids = mails.map(function (m) { return m.id; }); if (!mails.length) return { k: "" };\n'
     + '    return new Promise(function (done) {\n'
     + '      google.script.run\n'
-    + '        .withSuccessHandler(function (r) { report(r.sent, r.failed).then(function () { done(r.failed.length ? "app" : "own"); }, function () { done("app"); }); })\n'
-    + '        .withFailureHandler(function () { report([], ids).then(function () { done("app"); }, function () { done("app"); }); })\n'
+    + '        .withSuccessHandler(function (r) { var m = { k: r.failed.length ? "failed" : "own", n: r.sent.length }; report({ ids: r.sent, failed: r.failed }).then(function () { done(m); }, function () { done(m); }); })\n'
+    + '        .withFailureHandler(function () { report({ back: ids }).then(function () { done({ k: "later" }); }, function () { done({ k: "later" }); }); })\n'
     + '        .sendAll(mails);\n'
     + '    });\n'
-    + '  }, function () { return "bad"; });\n'
+    + '  }, function () { return { k: "later" }; });\n'
     + '}\n'
     + 'var name = post({}).then(function (out) { return out && out.ok ? out.name : ""; }, function () { return ""; });\n'
     + 'Promise.all([name, mail()]).then(function (r) {\n'
     + '  if (d.quiet) return;\n'
-    + '  var n = r[0], k = r[1], lines = [];\n'
+    + '  var n = r[0], m = r[1], lines = [];\n'
     + '  if (n) lines.push("You appear in Days in Lieu as <b>" + esc(n) + "</b>.");\n'
-    + '  if (k === "own") lines.push("Your email was sent from your own school address.");\n'
-    + '  if (k === "app") lines.push("An email couldn\\u2019t be sent from your address, so Days in Lieu sent a short one with your name on it.");\n'
-    + '  if (k === "bad") lines.push("Your email couldn\\u2019t be sent from here, so Days in Lieu sends a short one from the app instead.");\n'
+    + '  if (m.n) lines.push(m.n === 1 ? "Your email was sent from your own school address." : m.n + " emails were sent from your own school address.");\n'
+    + '  if (m.k === "failed") lines.push("An email couldn\\u2019t be sent from your address. What you did is saved in Days in Lieu, so let them know yourself.");\n'
+    + '  if (m.k === "later") lines.push("Your email couldn\\u2019t be sent just now. It is still waiting in Days in Lieu, so you can try again.");\n'
     + '  if (!lines.length) lines.push("Your school account couldn\\u2019t be checked.");\n'
     + '  lines.push("Close this tab and go back to Days in Lieu. It carries on by itself.");\n'
-    + '  document.getElementById("m").innerHTML = "<h1>" + (n || k === "own" ? "Done" : "That didn\\u2019t work") + "</h1><p>" + lines.join("</p><p>") + "</p>";\n'
+    + '  document.getElementById("m").innerHTML = "<h1>" + ((n || m.n) && m.k !== "failed" && m.k !== "later" ? "Done" : "That didn\\u2019t work") + "</h1><p>" + lines.join("</p><p>") + "</p>";\n'
     + '});\n'
     + '})();</script>';
   return HtmlService.createHtmlOutput(html).setTitle('Days in Lieu').addMetaTag('viewport', 'width=device-width, initial-scale=1')
@@ -57,7 +59,7 @@ function doGet(e) {
 // Has this visitor let Days in Lieu send email as them? (They may have unticked it on Google's screen.)
 function sendGranted() {
   try { return ScriptApp.getAuthorizationInfo(ScriptApp.AuthMode.FULL, [SEND_SCOPE]).getAuthorizationStatus() === ScriptApp.AuthorizationStatus.NOT_REQUIRED; }
-  catch (err) { console.error('sendGranted: ' + err); return true; }   // can't tell: try, and anything that fails goes from the app
+  catch (err) { console.error('sendGranted: ' + err); return true; }   // can't tell: try; anything that fails is reported and the page says so
 }
 
 // Sends each email from the visitor's own address. School addresses only, at most 20 at a time.

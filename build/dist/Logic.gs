@@ -318,7 +318,12 @@ var DIL = (function () {
     return String(s.role || '').trim().toLowerCase() === 'approver' ? 'approver' : 'staff';
   }
   function approvers(staff) { return (staff || []).filter(function (s) { return roleFor(s.email, staff) === 'approver'; }); }
-  function firstName(name) { var n = String(name || '').trim().replace(/^(mr|mrs|ms|miss|dr|fr|sr)\.?\s+/i, ''); return n.split(/\s+/)[0] || n; }
+  // "Mrs Claire Hughes" → "Claire". A C2k Google name is an initial and a surname ("D Gartland"), and an initial alone is no
+  // name to greet anyone by, so then the whole name stays: "Hello D Gartland," (the Principal's first decision said "Hello D,").
+  function firstName(name) {
+    var n = String(name || '').trim().replace(/^(mr|mrs|ms|miss|dr|fr|sr)\.?\s+/i, ''), w = n.split(/\s+/);
+    return w.length > 1 && /^[^\s.]\.?$/.test(w[0]) ? n : w[0] || n;
+  }
 
   // ---------- claims (days in lieu a person says they are owed) ----------
   // A claim: {claimId, staffEmail, staffName, submittedAt, workDays, reason, amountClaimed, amountApproved, status, decisionNote, decidedAt, decidedBy, startYear}

@@ -51,7 +51,7 @@ function include(name) { return HtmlService.createHtmlOutputFromFile(name).getCo
 /* ---------- one entry point for the browser ---------- */
 function api(name, args) {
   if (!API.hasOwnProperty(name)) throw new Error('Unknown call: ' + name);
-  try { flushMail(); } catch (err) { console.error('flushMail: ' + err); }   // a decision email never waits more than ten minutes
+  try { flushMail(); } catch (err) { console.error('flushMail: ' + err); }   // housekeeping for the waiting emails; never a send
   var out = API[name].apply(null, args || []);
   return JSON.parse(JSON.stringify(out === undefined ? null : out));   // plain JSON only: no Date objects across the wire
 }
@@ -151,53 +151,85 @@ function sendMail(to, msg, from) {
 function fromPerson(st, email) { return { name: nameOf(st, email), replyTo: DIL.norm(email) }; }
 
 /* Every email goes from the OWN address of the person it is from: a claim or booking from the teacher, a decision from the
-   approver. MailApp here can only send from the app owner's address, so the email waits in the script's properties for the
-   sign-in page: a small separate project that runs as the visitor (build/companion; it also hands in the name). Its page posts the visitor's own Google
-   token to doPost, which asks Google whose token it is and hands over only that person's waiting emails; the page sends
-   them with MailApp as them and reports back. Anything it cannot send, and anything still waiting after ten minutes, the
-   app sends in their place as a short note (S.email.brief): who and what, never the details, so nothing about anyone's
-   days sits in the app owner's sent mail. With no send link set, everything is sent from the app at once, in full. */
-var MAIL_WAIT = 10 * 60000, MAIL_KEEP = 864e5;
-function outbox() { var all = PropertiesService.getScriptProperties().getProperties(), out = []; for (var k in all) if (k.indexOf('mail:') === 0) { try { out.push(JSON.parse(all[k])); } catch (err) {} } return out; }
+   approver. MailApp here could only send from the app owner's address, so the email waits in the script's properties for the
+   sign-in page: a small separate project that runs as the visitor (build/companion; it also hands in the name). Its page
+   posts the visitor's own Google token to doPost, which asks Google whose token it is and hands over only that person's
+   waiting emails; the page sends them with MailApp as them and reports back.
+   Nothing is ever sent in anyone's place. Until a person has given Google their OK once, their emails wait, and Days in
+   Lieu asks them for that OK every time it opens (app.js, ownMail). Until 29 Sep 2026 the app sent a short note from the
+   owner's address after ten minutes; the Principal's first decision reached a teacher that way, and the owner ruled that
+   no email goes from his address unless he caused it. An email the page could not send is marked failed and the page says
+   so; one never collected is dropped after MAIL_DROP. With no send link set (the owner's switch), everything is sent from
+   the app at once, in full. */
+var MAIL_KEEP = 864e5, MAIL_RETRY = 5 * 60000, MAIL_DROP = 14 * 864e5;
+function outbox() { var all = PropertiesService.getScriptProperties().getProperties(), out = []; for (var k in all) if (k.indexOf('mail:') === 0) { try { out.push(JSON.parse(all[k])); } catch (err) {} } return out.sort(function (a, b) { return a.at - b.at; }); }
 function putMail(m) { PropertiesService.getScriptProperties().setProperty('mail:' + m.id, JSON.stringify(m)); }
 function dropMail(id) { PropertiesService.getScriptProperties().deleteProperty('mail:' + id); }
-// Returns the waiting email's id, or '' when it went from the app at once.
-function personMail(st, fromEmail, to, kind, args) {
+// Returns the waiting email's id ('' when there is none to watch: no recipient, or no send link, so it went from the app at once).
+// ref is the claim or booking it is about, so that a later step can drop it once it has gone stale (dropWaiting).
+function personMail(st, fromEmail, to, kind, args, ref) {
   var from = fromPerson(st, fromEmail), list = [].concat(to).filter(Boolean).map(DIL.norm); if (!list.length) return '';
   if (!String(st.cfg.sendUrl || '').trim()) { sendMail(list, S.email[kind](args), from); return ''; }
-  var m = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), from: from.replyTo, fromName: from.name, to: list.join(','), kind: kind, args: args, at: Date.now(), state: 'waiting' };
-  var json = JSON.stringify(m);
-  if (json.length < 8500) { PropertiesService.getScriptProperties().setProperty('mail:' + m.id, json); return m.id; }   // one property holds 9 KB
-  sendMail(list, S.email.brief(kind, args), from); return '';
+  var m = { id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7), from: from.replyTo, to: list.join(','), kind: kind, args: args, ref: String(ref || ''), at: Date.now(), state: 'waiting' };
+  // One property holds 9 KB: an email too long for it (a booking of many days with long notes) goes as the short note
+  // instead (S.email.brief: who and what, with the link), still from the person's own address.
+  if (JSON.stringify(m).length >= 8500) { m.brief = true; m.args = { staffName: args.staffName, principalName: args.principalName, first: args.first, url: args.url }; }
+  try { putMail(m); return m.id; } catch (err) { console.error('email not queued (' + kind + ' from ' + m.from + '): ' + err); return ''; }
 }
-function sendFromApp(m) {
-  try { sendMail(m.to.split(','), S.email.brief(m.kind, m.args), { name: m.fromName, replyTo: m.from }); m.state = 'app'; }
-  catch (err) { console.error('email ' + m.id + ': ' + err); m.state = 'failed'; }
-  m.doneAt = Date.now(); putMail(m);
-}
+function mailText(m) { return m.brief ? S.email.brief(m.kind, m.args) : S.email[m.kind](m.args); }
 function mailWaiting(m) { return m.state === 'waiting' || m.state === 'sending'; }
-function flushMail() {
-  var now = Date.now(), due = function (m) { return mailWaiting(m) ? now - m.at > MAIL_WAIT : now - (m.doneAt || m.at) > MAIL_KEEP; };
-  if (!outbox().some(due)) return;
-  withLock(function () { outbox().filter(due).forEach(function (m) { if (mailWaiting(m)) sendFromApp(m); else dropMail(m.id); }); });
+// A later step can make a waiting email stale: a claim decided before its "new claim" email went, a decision changed before
+// the first one went. Only emails still waiting: one already handed to a send page is on its way. Returns how many it dropped.
+function dropWaiting(ref, kinds, keep) {
+  var n = 0; if (!ref) return 0;
+  outbox().forEach(function (m) { if (m.ref === String(ref) && kinds.indexOf(m.kind) >= 0 && m.state === 'waiting' && m.id !== keep) { dropMail(m.id); n++; } });
+  return n;
 }
-// The send page, as its visitor: 'outbox' hands over their waiting emails ready to send; 'sent' reports which went.
+// Housekeeping on every call; it never sends. A hand-over the send page never reported goes back to waiting (a lost report
+// can mean an email goes twice, never that it goes nowhere); an email never collected is dropped after MAIL_DROP; a
+// finished one is cleared after a day.
+function flushMail() {
+  var now = Date.now(), due = function (m) {
+    return m.state === 'sending' ? now - (m.claimedAt || m.at) > MAIL_RETRY : m.state === 'waiting' ? now - m.at > MAIL_DROP : now - (m.doneAt || m.at) > MAIL_KEEP;
+  };
+  if (!outbox().some(due)) return;
+  withLock(function () { outbox().filter(due).forEach(function (m) {
+    if (m.state === 'sending') { m.state = 'waiting'; delete m.claimedAt; putMail(m); return; }
+    if (m.state === 'waiting') console.error('email ' + m.id + ' (' + m.kind + ' from ' + m.from + ') never collected: dropped after ' + MAIL_DROP / 864e5 + ' days');
+    dropMail(m.id);
+  }); });
+}
+// The send page, as its visitor: 'outbox' hands over their waiting emails ready to send; 'sent' reports which went and which
+// failed. A failed email is final: the page tells its sender, and nothing goes in their place.
 function mailPost(email, body) {
   if (!email || !/@c2ken\.net$/.test(email)) return { ok: false, code: 'who' };
   return withLock(function () {
     var mine = outbox().filter(function (m) { return m.from === email; });
-    if (body.action === 'outbox') return { ok: true, mails: mine.filter(function (m) { return m.state === 'waiting'; }).slice(0, 20).map(function (m) {
-      m.state = 'sending'; m.claimedAt = Date.now(); putMail(m); var t = S.email[m.kind](m.args);
-      return { id: m.id, to: m.to, subject: t.subject, text: t.text, html: t.html };
-    }) };
-    var sent = [].concat(body.ids || []).map(String), failed = [].concat(body.failed || []).map(String);
+    if (body.action === 'outbox') {
+      PropertiesService.getScriptProperties().setProperty('sendok:' + email, String(Date.now()));   // their page runs with Google's OK to send as them
+      return { ok: true, mails: mine.filter(function (m) { return m.state === 'waiting'; }).slice(0, 20).map(function (m) {
+        m.state = 'sending'; m.claimedAt = Date.now(); putMail(m); var t = mailText(m);
+        return { id: m.id, to: m.to, subject: t.subject, text: t.text, html: t.html };
+      }) };
+    }
+    // ids: sent from their address. failed: couldn't be sent (final; their page tells them to pass it on). back: the send never
+    // ran, so they wait again at once and can be tried again.
+    var sent = [].concat(body.ids || []).map(String), failed = [].concat(body.failed || []).map(String), back = [].concat(body.back || []).map(String);
     mine.forEach(function (m) {
       if (!mailWaiting(m)) return;
-      if (sent.indexOf(m.id) >= 0) { m.state = 'own'; m.doneAt = Date.now(); putMail(m); }
-      else if (failed.indexOf(m.id) >= 0) sendFromApp(m);
+      if (back.indexOf(m.id) >= 0) { if (m.state === 'sending') { m.state = 'waiting'; delete m.claimedAt; putMail(m); } return; }
+      if (sent.indexOf(m.id) >= 0) m.state = 'own'; else if (failed.indexOf(m.id) >= 0) m.state = 'failed'; else return;
+      m.doneAt = Date.now(); putMail(m);
     });
     return { ok: true };
   });
+}
+// The viewer's own emails still to go, so the page can carry on with them, and whether their send page has ever run with
+// Google's OK (the page then waits longer before it asks).
+function mailOf(st, email) {
+  var waiting = [];
+  outbox().forEach(function (m) { if (m.from === email && mailWaiting(m)) waiting.push({ id: m.id, first: (m.args && m.args.first) || st.cfg.principalName }); });
+  return { waiting: waiting, ownSend: !!PropertiesService.getScriptProperties().getProperty('sendok:' + email) };
 }
 function approverEmails(st) { return DIL.approvers(st.staff).map(function (s) { return s.email; }); }
 
@@ -264,9 +296,9 @@ var API = {
     // The name comes from the directory when it answers; the name door asks only when it does not.
     if (reg.code === 'added') { auto = displayName(email); reg.row.name = auto; withLock(function () { appendRow('Staff', reg.row); }); st.staff.push(reg.row); }
     else if (reg.code === 'known' && !reg.row.name) { auto = displayName(email); if (auto) { reg.row.name = auto; withLock(function () { saveRow('Staff', reg.row); }); } }
-    var s = email ? DIL.findStaff(email, st.staff) : null, role = email ? DIL.roleFor(email, st.staff) : 'unknown';
+    var s = email ? DIL.findStaff(email, st.staff) : null, role = email ? DIL.roleFor(email, st.staff) : 'unknown', mail = email ? mailOf(st, email) : { waiting: [], ownSend: false };
     return { ok: true, email: email, name: s ? s.name : '', autoName: auto, needName: !!(s && !s.name), removed: reg.code === 'removed', role: role, queueCount: queueCount(st, email), today: today(),
-             appUrl: appUrl(st), nameUrl: String(st.cfg.nameUrl || ''), sendUrl: String(st.cfg.sendUrl || '').trim(), sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
+             appUrl: appUrl(st), nameUrl: String(st.cfg.nameUrl || ''), sendUrl: String(st.cfg.sendUrl || '').trim(), mailWaiting: mail.waiting, ownSend: mail.ownSend, sheetUrl: role === 'approver' ? ss().getUrl() : '', cfg: { principalName: st.cfg.principalName, quickReasons: st.cfg.quickReasons },
              year: DIL.currentYear(today(), st.cfg), window: DIL.requestWindow(today(), st.cfg), claimWindow: DIL.claimWindow(DIL.currentYear(today(), st.cfg), st.cfg) };
   },
   // Polled by the page while the name check runs in the background.
@@ -293,7 +325,7 @@ var API = {
       appendRow('Claims', claimRow(k)); return k;
     });
     st.claims.push(c);
-    var mail = personMail(st, email, approverEmails(st), 'newClaim', { staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: appUrl(st) + '?claim=' + c.claimId });
+    var mail = personMail(st, email, approverEmails(st), 'newClaim', { staffName: s.name, amount: c.amountClaimed, reason: c.reason, workDays: c.workDays, url: appUrl(st) + '?claim=' + c.claimId }, c.claimId);
     return { ok: true, claim: claimView(st, c), balance: balanceOf(st, email, year), mail: mail };
   },
   withdrawClaim: function (id) {
@@ -301,7 +333,9 @@ var API = {
       var st = loadStore(); need(st, email, 'staff'); var c = st.claims.filter(function (x) { return x.claimId === id && DIL.norm(x.staffEmail) === email; })[0]; if (!c) return { ok: false, code: 'not_found' };
       if (!DIL.canWithdrawClaim(c)) return { ok: false, code: 'not_pending', claim: claimView(st, c) };
       c.status = 'withdrawn'; saveRow('Claims', claimRow(c));
-      return { ok: true, mail: personMail(st, email, approverEmails(st), 'claimWithdrawn', { staffName: c.staffName, claim: strip(c), url: appUrl(st) }) };
+      // Its "new claim" email never went: nobody was told of the claim, so nobody is told it is gone.
+      if (dropWaiting(c.claimId, ['newClaim'])) return { ok: true, mail: '' };
+      return { ok: true, mail: personMail(st, email, approverEmails(st), 'claimWithdrawn', { staffName: c.staffName, claim: strip(c), url: appUrl(st) }, c.claimId) };
     });
   },
   // ----- staff: bookings -----
@@ -316,7 +350,7 @@ var API = {
       appendRow('Requests', requestRow(r)); st.requests.push(r);
       v.days.forEach(function (d, i) { var day = { dayId: id + '-' + (i + 1), requestId: id, staffEmail: email, staffName: s.name, date: d.date, portion: d.portion, value: d.value, reason: d.reason, status: 'pending', decisionNote: '', decidedAt: '', startYear: DIL.academicYearOf(d.date, st.cfg).startYear }; appendRow('Days', day); st.days.push(day); });
       var b = balanceOf(st, email, year);
-      var mail = personMail(st, email, approverEmails(st), 'newRequest', { staffName: s.name, total: v.total, days: v.days, note: v.sharedReason, replaces: v.replaces, balance: b, url: appUrl(st) + '?r=' + id });
+      var mail = personMail(st, email, approverEmails(st), 'newRequest', { staffName: s.name, total: v.total, days: v.days, note: v.sharedReason, replaces: v.replaces, balance: b, url: appUrl(st) + '?r=' + id }, id);
       return { ok: true, request: reqView(st, r), balance: b, mail: mail };
     });
   },
@@ -325,14 +359,15 @@ var API = {
       var st = loadStore(); need(st, email, 'staff'); var r = st.requests.filter(function (x) { return x.id === id && DIL.norm(x.staffEmail) === email; })[0]; if (!r) return { ok: false, code: 'not_found' };
       var ds = st.days.filter(function (d) { return d.requestId === id; }); if (!DIL.canWithdraw(ds)) return { ok: false, code: 'not_pending' };
       ds.forEach(function (d) { if (d.status === 'pending') { d.status = 'withdrawn'; saveRow('Days', d); } });
-      return { ok: true, mail: personMail(st, email, approverEmails(st), 'withdrawn', { staffName: r.staffName, total: DIL.total(ds), days: ds.map(strip), url: appUrl(st) }) };
+      if (dropWaiting(id, ['newRequest'])) return { ok: true, mail: '' };   // nobody was told of the booking, so nobody is told it is gone
+      return { ok: true, mail: personMail(st, email, approverEmails(st), 'withdrawn', { staffName: r.staffName, total: DIL.total(ds), days: ds.map(strip), url: appUrl(st) }, id) };
     });
   },
   cancelDay: function (dayId) {
     var email = viewerEmail(); return withLock(function () {
       var st = loadStore(); need(st, email, 'staff'); var d = st.days.filter(function (x) { return x.dayId === dayId && DIL.norm(x.staffEmail) === email; })[0]; if (!d || !DIL.canCancelDay(d, today())) return { ok: false, code: 'not_allowed' };
       d.status = 'cancelled'; saveRow('Days', d);
-      return { ok: true, mail: personMail(st, email, approverEmails(st), 'cancelled', { staffName: d.staffName, day: strip(d), url: appUrl(st) }) };
+      return { ok: true, mail: personMail(st, email, approverEmails(st), 'cancelled', { staffName: d.staffName, day: strip(d), url: appUrl(st) }, d.requestId) };
     });
   },
   // ----- approver: to decide -----
@@ -351,9 +386,11 @@ var API = {
       for (var k in res.claim) if (k !== '_row') c[k] = res.claim[k];
       var b = balanceOf(st, c.staffEmail, year);
       // The email first, then the Sheet: a decision the person was never told about is not a decision. From the approver's
-      // own address it waits a moment for her send page (personMail); if the Sheet then fails, the waiting email goes too.
-      var mail = personMail(st, email, c.staffEmail, 'claimDecision', { first: DIL.firstName(c.staffName), principalName: st.cfg.principalName, claim: strip(c), yearLabel: year.label, balance: b, url: appUrl(st) });
+      // own address it waits for her send page (personMail); if the Sheet then fails, the waiting email goes too. Once saved,
+      // the teacher's "new claim" email and any earlier decision still waiting are stale: this email says it all.
+      var mail = personMail(st, email, c.staffEmail, 'claimDecision', { first: DIL.firstName(c.staffName), principalName: st.cfg.principalName, claim: strip(c), yearLabel: year.label, balance: b, url: appUrl(st) }, id);
       try { saveRow('Claims', claimRow(c)); } catch (err) { if (mail) dropMail(mail); throw err; }
+      dropWaiting(id, ['newClaim', 'claimDecision'], mail);
       return { ok: true, claim: claimView(st, c), balance: b, queueCount: queueCount(st, email), mail: mail };
     });
   },
@@ -364,8 +401,9 @@ var API = {
       res.days.forEach(function (nd) { var d = st.days.filter(function (x) { return x.dayId === nd.dayId; })[0]; for (var k in nd) if (k !== '_row') d[k] = nd[k]; });
       r.decisionNote = res.note; r.decidedAt = today(); r.decidedBy = email;
       var b = balanceOf(st, r.staffEmail, DIL.yearBounds(Number(r.startYear), st.cfg));
-      var mail = personMail(st, email, r.staffEmail, 'decision', { first: DIL.firstName(r.staffName), principalName: st.cfg.principalName, submitted: r.submittedAt, days: res.days.map(strip), outcome: res.outcome, note: r.decisionNote, yearLabel: r.year, balance: b, url: appUrl(st) });
+      var mail = personMail(st, email, r.staffEmail, 'decision', { first: DIL.firstName(r.staffName), principalName: st.cfg.principalName, submitted: r.submittedAt, days: res.days.map(strip), outcome: res.outcome, note: r.decisionNote, yearLabel: r.year, balance: b, url: appUrl(st) }, id);
       try { ds.forEach(function (d) { saveRow('Days', d); }); saveRow('Requests', requestRow(r)); } catch (err) { if (mail) dropMail(mail); throw err; }
+      dropWaiting(id, ['newRequest', 'decision'], mail);
       return { ok: true, request: reqView(st, r), balance: b, queueCount: queueCount(st, email), mail: mail };
     });
   },
@@ -374,13 +412,6 @@ var API = {
     var email = viewerEmail(), want = [].concat(ids || []).map(String), out = {};
     outbox().forEach(function (m) { if (m.from === email && want.indexOf(m.id) >= 0) out[m.id] = m.state; });
     want.forEach(function (id) { if (!out[id]) out[id] = 'gone'; }); return { ok: true, states: out };
-  },
-  // "Send from the app instead": the viewer's waiting emails go now, from the app, as short notes with their name on them.
-  mailFromApp: function (ids) {
-    var email = viewerEmail(), want = [].concat(ids || []).map(String); return withLock(function () {
-      var n = 0; outbox().forEach(function (m) { if (m.from === email && want.indexOf(m.id) >= 0 && (m.state === 'waiting' || (m.state === 'sending' && Date.now() - m.claimedAt > 60000))) { sendFromApp(m); n++; } });
-      return { ok: true, sent: n };
-    });
   },
   decided: function (startYear) {
     var email = viewerEmail(), st = loadStore(); need(st, email, 'approver'); var year = startYear ? DIL.yearBounds(startYear, st.cfg) : DIL.currentYear(today(), st.cfg);

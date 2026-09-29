@@ -362,17 +362,19 @@ var S = (function () {
       bad_portion: 'Choose Full day, Morning or Afternoon for every day.', reason_too_long: 'Keep the note under 500 characters.',
       describe: function (p) { var m = S.dateProblem[p.code]; return typeof m === 'function' ? m(p) : (m || S.dateProblem.invalid); }
     },
-    // ---------- every email goes from the own address of the person it is from ----------
+    // ---------- every email goes from the own address of the person it is from; nothing is ever sent in their place ----------
     ownMail: {
-      queued: function (first) { return 'Done — ' + first + ' is being emailed from your own address.'; },
+      queued: function (first) { return 'Done — your email to ' + first + ' goes from your own address.'; },
       sentOwn: function (names) { return names.length === 1 ? 'Email to ' + names[0] + ' sent from your own address.' : names.length + ' emails sent from your own address.'; },
-      sentApp: function (names) { return names.length === 1 ? 'A short email to ' + names[0] + ' sent from the app, with your name on it.' : names.length + ' short emails sent from the app, with your name on them.'; },
       failed: 'An email didn’t send. What you did is saved, so let them know yourself.',
-      title: 'Send from your own email',
-      body: 'Days in Lieu sends your emails from your own school email address. Google asks your OK for that once.',
+      frame: 'Send from your own email',
+      title: function (names) { return names.length === 1 ? 'Your email to ' + names[0] + ' is waiting' : names.length + ' emails are waiting to go'; },
+      body: function (n) { return 'Days in Lieu sends ' + (n === 1 ? 'it' : 'them') + ' from your own school email address. Google needs your OK for that, once only.'; },
       steps: ['Press Continue with Google. A new tab opens.', 'If Google asks, press Review permissions and choose your school account.', 'If there is a box next to Send email as you, tick it. Then press Continue.', 'Come back to this tab. It carries on by itself.'],
       button: 'Continue with Google',
-      fromApp: 'Send from the app instead',
+      later: 'Later',
+      laterNote: function (n) { return 'Later keeps ' + (n === 1 ? 'it' : 'them') + ' waiting, and Days in Lieu asks again next time you open it.'; },
+      laterToast: function (n) { return (n === 1 ? 'Your email is' : 'Your emails are') + ' waiting. Days in Lieu asks again next time you open it.'; },
       watching: 'Waiting for Google…'
     },
     // ---------- emails ----------
@@ -384,7 +386,8 @@ var S = (function () {
       balanceLine: function (yearLabel, b) { return 'Days in lieu for ' + yearLabel + ': ' + fd(b.approved) + ' approved, ' + fd(b.booked) + ' booked, ' + fd(b.left) + ' left to book.'; },
       wrap: function (parts) { return parts.filter(Boolean).join('\n\n') + '\n\n— ' + S.email.footer; },
       wrapHtml: function (parts) { return parts.filter(Boolean).join('') + '<p style="color:#707070">— ' + esc(S.email.footer) + '</p>'; },
-      // What the app sends in someone's place when their own address could not be used: who and what, never the details.
+      // The short note: who and what, with the link, never the details. It goes instead of the full email, still from the
+      // person's own address, when the full one is too long to wait in one property (Code.gs personMail).
       brief: function (kind, c) {
         var B = {
           newClaim: [c.staffName + ' sent a claim', c.staffName + ' has sent a claim for days in lieu.', 'Open it to approve or decline'],

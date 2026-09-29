@@ -354,11 +354,13 @@ h3.section:first-of-type { margin-top: 6px; }
 .door ol.steps { display: inline-block; text-align: left; margin: 4px auto 20px; padding-left: 22px; max-width: 26em; }
 .door a.btn { text-decoration: none; }
 .door ol.steps li { margin: 6px 0; }
-/* The send-from-my-email panel: sits over the corner, never over the whole page, so the queue can still be worked. */
-.ownmail{position:fixed;right:20px;bottom:20px;z-index:40;max-width:400px;width:calc(100% - 40px);padding:20px 22px}
-.ownmail h3{font-size:20px;margin-bottom:8px}
-.ownmail ol.steps{margin:8px 0 14px;padding-left:22px}
+/* The send-from-my-email box: in the middle of the screen, over a dimmed page, because nothing goes until they act on it.
+   Under the toast (z-index 50), so a toast that lands while it is open can still be read. */
+.ownmail-bg{position:fixed;top:0;right:0;bottom:0;left:0;z-index:45;background:rgba(16,28,48,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.ownmail{max-width:440px;width:100%;padding:24px 26px;max-height:calc(100vh - 32px);overflow:auto}
+.ownmail h3{font-size:21px;margin-bottom:8px}
+.ownmail ol.steps{margin:8px 0 16px;padding-left:22px}
 .ownmail ol.steps li{margin:4px 0}
 .ownmail-btns{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
-@media (max-width:600px){.ownmail{right:12px;left:12px;bottom:12px;width:auto;max-width:none}}
+.ownmail a.btn{text-decoration:none}
 </style>
