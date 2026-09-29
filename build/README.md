@@ -77,7 +77,7 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
 
 ## The live deployment (27 Sep 2026)
 
-- Web app, Version 11 from 28 Sep 2026 19:49 — one Google screen for name and email (the URL never changes on a redeploy):
+- Web app, Version 12 since 29 Sep 2026 (checked 09:46; Version 11 + claim links `?claim=`) — one Google screen for name and email (the URL never changes on a redeploy):
   https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
 - The Sheet (dgartland021's C2k Drive; the script is bound to it):
   https://docs.google.com/spreadsheets/d/1mlAvXuCuH5tkB4udW1HSDN2f7neqlXHXjaWdcDxfOFA/edit
@@ -87,7 +87,7 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
   domain-only deployment answers 401 to a server-to-server call). Only its `doPost` matters:
   https://script.google.com/macros/s/AKfycbw1bp3S-nmIm3t0VKjod1vdxsehDv2pIXzSJT_fCDGlVzCa_2mCiEM3S268EuqqtI29/exec
   On every redeploy of the main link, move this deployment to the same new version too (it also takes the send
-  page's `outbox` and `sent` posts). Version 11 since 28 Sep 2026 19:49.
+  page's `outbox` and `sent` posts). Version 12 since 29 Sep 2026 (moved with the main link).
 - **Staff sign-in** — the separate project first made as "Days in Lieu · name check" (`build/companion/`, owner
   dgartland021), Execute as **user accessing**, Anyone within c2ken, scopes email + profile + send mail ONLY. One page,
   two jobs: it hands in the visitor's name, and sends their waiting emails from their own address. Its page, not its
@@ -137,11 +137,11 @@ The OWNER must also have granted the main project `script.external_request` (doP
 function that uses UrlFetch once in the editor and approve. Without it every hand-in answers `failed` with
 "You do not have permission to call UrlFetchApp.fetch" in `why`. Granted 28 Sep 2026.
 
-Link parameters: claim emails link with `?claim=`, bookings with `?r=`. Never `?c=` or `?sid=`: Google reserves both and refuses the link ("Sorry, unable to open the file at present") before doGet runs — the Principal's first claim link, 29 Sep 2026. Fix commit 96ca6e0; live once the main staff link is redeployed (Version 12).
+Link parameters: claim emails link with `?claim=`, bookings with `?r=`. Never `?c=` or `?sid=`: Google reserves both and refuses the link ("Sorry, unable to open the file at present") before doGet runs — the Principal's first claim link, 29 Sep 2026. Fix commit 96ca6e0; live on Version 12 (both links) since 29 Sep 2026, checked 09:46: a `?claim=` link ran Version 12. Version 12 was typed in the editor as the ONE claim-link line on top of Version 11, so live doGet still reads `p.c || p.r` where the repo reads `p.claim || p.r`: no difference in behaviour (approvers open on "To decide" either way); it rides with the next deploy from the repo. Links already sent with `?c=` stay refused by Google: send the plain link instead.
 
 Deployments (Manage deployments): the main staff link AKfycby5o… is labelled "Main staff link - emails from your
-own address" (Version 11); the hand-in AKfycbw1bp3S… (access Anyone) is labelled "Hand-in link - names and emails"
-(Version 11). Same code for doPost in both. Older labels sit under Archived: those are past versions, not lost links.
+own address" (Version 12); the hand-in AKfycbw1bp3S… (access Anyone) is labelled "Hand-in link - names and emails"
+(Version 12). Same code for doPost in both. Older labels sit under Archived: those are past versions, not lost links.
 
 The Review permissions screen says "Unverified" until C2k central marks school-built apps as trusted (request text:
 `Claude Work/_probes/c2k_trust_apps_request.txt`); after that it disappears with no change here.
