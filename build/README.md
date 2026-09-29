@@ -137,6 +137,8 @@ The OWNER must also have granted the main project `script.external_request` (doP
 function that uses UrlFetch once in the editor and approve. Without it every hand-in answers `failed` with
 "You do not have permission to call UrlFetchApp.fetch" in `why`. Granted 28 Sep 2026.
 
+Link parameters: claim emails link with `?claim=`, bookings with `?r=`. Never `?c=` or `?sid=`: Google reserves both and refuses the link ("Sorry, unable to open the file at present") before doGet runs — the Principal's first claim link, 29 Sep 2026. Fix commit 96ca6e0; live once the main staff link is redeployed (Version 12).
+
 Deployments (Manage deployments): the main staff link AKfycby5o… is labelled "Main staff link - emails from your
 own address" (Version 11); the hand-in AKfycbw1bp3S… (access Anyone) is labelled "Hand-in link - names and emails"
 (Version 11). Same code for doPost in both. Older labels sit under Archived: those are past versions, not lost links.
