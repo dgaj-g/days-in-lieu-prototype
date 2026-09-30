@@ -78,7 +78,7 @@ Deploy ▸ Manage deployments ▸ edit ▸ Version: New ▸ Deploy. The URL does
 
 ## The live deployment (27 Sep 2026)
 
-- Web app, Version 13 since 29 Sep 2026 19:41 (commit 26105ea: nothing is ever sent in anyone's place; hand-in link also Version 13, sign-in project Version 4) — one Google screen for name and email (the URL never changes on a redeploy):
+- Web app, Version 14 since 30 Sep 2026 22:21 (commit c8189ac: 'Done, sending your claim…' → '✓ Claim sent' on the card and under the header while an email goes from the person's own address; the waiting box at 30 s. Hand-in link still Version 13 — doPost only, nothing to redeploy; sign-in project Version 4) — one Google screen for name and email (the URL never changes on a redeploy):
   https://script.google.com/a/macros/c2ken.net/s/AKfycby5o-MkQ7R0w-LTalT7fj3uUdTKWkWXocBy9D9mgy0iLTM3730r9BapfjsJ0ucUV7ez/exec
 - The Sheet (dgartland021's C2k Drive; the script is bound to it):
   https://docs.google.com/spreadsheets/d/1mlAvXuCuH5tkB4udW1HSDN2f7neqlXHXjaWdcDxfOFA/edit
