@@ -71,7 +71,7 @@ var DILApp = (function () {
   function shell() {
     var me = st.me;
     return '<header class="shell"><div class="wrap"><img class="crest" src="assets/crest-160.png" alt="' + esc(S.app.crestAlt) + '"><div class="brand"><h1>' + esc(S.app.name) + '</h1><div class="school">' + esc(S.app.school) + '</div></div>' +
-      (me && me.name ? '<div class="who"><b>' + esc(me.name) + '</b><span>' + esc(me.email) + '</span></div>' : '') + '</div></header><div class="waitline" id="wait"></div>' +
+      (me && me.name ? '<div class="who"><b>' + esc(me.name) + '</b><span>' + esc(me.email) + '</span></div>' : '') + '</div></header><div class="waitline" id="wait"></div><div class="mailline" id="mailline" aria-live="polite"></div>' +
       (me && me.role !== 'unknown' && me.email && !me.removed && !me.needName ? navTabs() : '') + '<main><div class="wrap" id="main"></div></main>';
   }
   function setBadge(n) { st.badge = n; var b = $('#badge'); if (b) { b.textContent = S.nav.queueBadge(n); b.hidden = !n; } }
@@ -85,6 +85,7 @@ var DILApp = (function () {
     st.tab = tab; $$('.tab').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === tab); });
     var m = $('#main'); m.innerHTML = loading(); window.scrollTo(0, 0);
     ({ dashboard: renderDashboard, claim: renderClaim, book: renderNew, queue: renderQueue, decided: renderDecided, overview: renderOverview, staff: renderStaff })[tab]();
+    omRefresh();   // the page's own card line has gone (or come back): the line under the header takes over or steps aside
   }
   function showLeaveBar(tab, text) {
     var m = $('#main'); var old = $('.leave-bar', m); if (old) old.remove();
@@ -292,8 +293,8 @@ var DILApp = (function () {
     setClaimMsg(''); busy(btn, S.claim.sending);
     call('submitClaim', sub).then(function (r) {
       if (!r.ok) { unbusy(btn); setClaimMsg(S.claimProblem.describe(r)); return; }
-      c.sent = true; c.leaveOK = true; ownMail(r.mail, who());
-      $('#main').innerHTML = pageHead(S.claim.title, S.claim.sub(st.me.year.label, who(), (st.me.claimWindow || {}).from)) + '<div class="done-line">✓ ' + esc(S.claim.sentTitle) + '</div><div class="card" style="margin-top:16px"><p style="margin:0 0 14px">' + esc(S.claim.sentBody(who())) + '</p>' + staffClaimCard(r.claim) + '<p style="margin:18px 0 0"><button class="btn navy" data-act="tab" data-tab="dashboard">' + esc(S.claim.backToDays) + '</button></p></div>';
+      c.sent = true; c.leaveOK = true; ownMail(r.mail, who(), 'claim');
+      $('#main').innerHTML = pageHead(S.claim.title, S.claim.sub(st.me.year.label, who(), (st.me.claimWindow || {}).from)) + doneLine(r.mail, 'claim', S.claim.sentTitle) + '<div class="card" style="margin-top:16px"><p style="margin:0 0 14px">' + esc(S.claim.sentBody(who())) + '</p>' + staffClaimCard(r.claim) + '<p style="margin:18px 0 0"><button class="btn navy" data-act="tab" data-tab="dashboard">' + esc(S.claim.backToDays) + '</button></p></div>';
       window.scrollTo(0, 0);
     }).catch(function () { unbusy(btn); serverFailed(); });
   }
@@ -422,8 +423,8 @@ var DILApp = (function () {
     setMsg(''); busy(btn, S.newReq.sending);
     call('submit', sub).then(function (r) {
       if (!r.ok) { unbusy(btn); setMsg(S.dateProblem.describe(r.detail || r)); return; }
-      n.sent = true; n.leaveOK = true; ownMail(r.mail, who());
-      $('#main').innerHTML = pageHead(S.newReq.title, S.newReq.sub(r.balance ? r.balance.left : 0, st.me.window.year.label)) + '<div class="done-line">✓ ' + esc(S.newReq.sentTitle) + '</div><div class="card" style="margin-top:16px"><p style="margin:0 0 14px">' + esc(S.newReq.sentBody(who())) + '</p>' + staffRequestCard(r.request) + '<p style="margin:18px 0 0"><button class="btn navy" data-act="tab" data-tab="dashboard">' + esc(S.newReq.backToDays) + '</button></p></div>';
+      n.sent = true; n.leaveOK = true; ownMail(r.mail, who(), 'request');
+      $('#main').innerHTML = pageHead(S.newReq.title, S.newReq.sub(r.balance ? r.balance.left : 0, st.me.window.year.label)) + doneLine(r.mail, 'request', S.newReq.sentTitle) + '<div class="card" style="margin-top:16px"><p style="margin:0 0 14px">' + esc(S.newReq.sentBody(who())) + '</p>' + staffRequestCard(r.request) + '<p style="margin:18px 0 0"><button class="btn navy" data-act="tab" data-tab="dashboard">' + esc(S.newReq.backToDays) + '</button></p></div>';
       window.scrollTo(0, 0);
     }).catch(function () { unbusy(btn); serverFailed(); });
   }
@@ -503,9 +504,9 @@ var DILApp = (function () {
         msg.textContent = Q.failed; return;
       }
       if (typeof r.queueCount === 'number') setBadge(r.queueCount);
-      var said = r.mail ? S.ownMail.queued(first) : Q.done(first); ownMail(r.mail, first);
+      var said = r.mail ? S.ownMail.sending('decision', true) : Q.done(first); ownMail(r.mail, first, 'decision');
       if (change) { card.outerHTML = decidedClaimCard(r.claim); toast(said); return; }
-      card.innerHTML = '<div class="done-line">✓ ' + esc(said) + '</div>';
+      card.innerHTML = doneLine(r.mail, 'decision', said);
       setTimeout(function () { card.classList.add('leaving'); setTimeout(function () { if (!document.body.contains(card)) return; card.remove(); afterQueueLeave('claims'); }, 450); }, 1400);
     }).catch(function () { unbusy(btn); msg.textContent = Q.failed; serverFailed(); });
   }
@@ -581,9 +582,9 @@ var DILApp = (function () {
     call('decide', id, qs.choices, { general: qs.note.trim(), days: w.days }, change).then(function (r) {
       if (!r.ok) { unbusy(btn); if (r.code === 'withdrawn') { toast(S.queue.gone(first)); renderQueue(); return; } if (r.code === 'not_pending') { toast(S.queue.alreadyDecided); renderQueue(); return; } msg.textContent = r.code === 'day_note_required' ? S.queue.needDayNote(r.date) : S.queue.failed; return; }
       if (typeof r.queueCount === 'number') setBadge(r.queueCount);
-      var said = r.mail ? S.ownMail.queued(first) : S.queue.done(first); ownMail(r.mail, first);
+      var said = r.mail ? S.ownMail.sending('decision', true) : S.queue.done(first); ownMail(r.mail, first, 'decision');
       if (change) { card.outerHTML = decidedCard(r.request); toast(said); return; }
-      card.innerHTML = '<div class="done-line">✓ ' + esc(said) + '</div>';
+      card.innerHTML = doneLine(r.mail, 'decision', said);
       setTimeout(function () { card.classList.add('leaving'); setTimeout(function () { if (!document.body.contains(card)) return; card.remove(); afterQueueLeave('bookings'); }, 450); }, 1400);
     }).catch(function () { unbusy(btn); msg.textContent = S.queue.failed; serverFailed(); });
   }
@@ -594,14 +595,40 @@ var DILApp = (function () {
      own account in a second or two, and one toast says so. Google cannot ask for that OK inside a hidden frame, so if the email
      is still waiting a moment later, a box in the middle of the screen asks for it, in its own tab (send=1: anyone who unticked
      "Send email as you" is asked for just that). Nothing is ever sent in their place: Later leaves the email waiting, and the box
-     comes back the next time they open Days in Lieu (boot) or send another. Someone whose send page has never run with Google's
-     OK (st.me.ownSend false) is asked after four seconds, anyone else after nine. */
-  var om = { items: {}, frame: null, loadedAt: 0, started: 0, timer: 0, shown: false, back: null };
-  function ownMail(id, first) {
+     comes back the next time they open Days in Lieu (boot) or send another. A background send normally takes ten to twenty
+     seconds (Google starts the page afresh each time), so the box waits thirty seconds: at four it was a false alarm for
+     nearly everyone (30 Sep 2026). */
+  var om = { items: {}, frame: null, loadedAt: 0, started: 0, timer: 0, shown: false, back: null, lineTimer: 0 };
+  // kind: 'claim' | 'request' | 'decision' | 'other' — picks the words ("Sending your claim…", "Claim sent").
+  function ownMail(id, first, kind) {
     if (!id || !st.me.sendUrl) return;
-    om.items[id] = { first: first, at: Date.now() };
+    om.items[id] = { first: first, at: Date.now(), kind: kind || 'other' };
+    setTimeout(omRefresh, 0);   // after the caller has drawn its page (its own card line, if any, decides whether the header line shows)
     if (!om.timer) { om.started = Date.now(); omFrame(); om.timer = setTimeout(omPoll, 1500); }
   }
+  // What the person sees while the email goes and once it has gone: the card's own line (data-mail, on the page that sent
+  // it) and one line under the header, on every page, so a withdrawal or a cancellation shows it too.
+  function dots() { return '<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>'; }
+  function doneLine(mailId, kind, plain) {
+    return mailId ? '<div class="done-line sending" data-mail="' + esc(mailId) + '">' + dots() + esc(S.ownMail.sending(kind, true)) + '</div>' : '<div class="done-line">✓ ' + esc(plain) + '</div>';
+  }
+  function omKind(ids) { var ks = []; (ids || Object.keys(om.items)).forEach(function (id) { var k = om.items[id] && om.items[id].kind; if (k && ks.indexOf(k) < 0) ks.push(k); }); return ks.length === 1 ? ks[0] : 'other'; }
+  function omMark(id, state, kind, first) {
+    var M = S.ownMail; $$('[data-mail="' + id + '"]').forEach(function (el) {
+      el.className = 'done-line' + (state === 'failed' ? ' bad' : state === 'needsOK' ? ' wait' : '');
+      el.innerHTML = state === 'done' ? '✓ ' + esc(M.sent(kind)) : state === 'failed' ? '! ' + esc(M.failedLine(first)) : esc(M.needsOK);
+    });
+  }
+  function omLine(state, kind) {
+    var el = $('#mailline'), M = S.ownMail; if (!el) return; clearTimeout(om.lineTimer); om.lineTimer = 0;
+    if (!state || $('.done-line[data-mail]')) { el.className = 'mailline'; el.innerHTML = ''; return; }   // the page has its own line: no second one
+    el.className = 'mailline on ' + state;
+    el.innerHTML = state === 'sending' ? dots() + esc(M.sending(kind, false)) : state === 'done' ? '✓ ' + esc(M.sent(kind)) : state === 'failed' ? '! ' + esc(M.failed) : esc(M.needsOK);
+    if (state === 'done' || state === 'failed') om.lineTimer = setTimeout(function () {   // then back to whatever is still going, or gone
+      if (!Object.keys(om.items).length) omLine(); else omLine(om.shown ? 'needsOK' : 'sending', omKind());
+    }, state === 'done' ? 4000 : 8000);
+  }
+  function omRefresh() { if (!Object.keys(om.items).length) return; var el = $('#mailline'); if (om.lineTimer || !el) return; omLine(om.shown ? 'needsOK' : 'sending', omKind()); }
   function omFrame() {
     if (om.frame && om.frame.parentNode) om.frame.parentNode.removeChild(om.frame);
     var u = st.me.sendUrl, f = document.createElement('iframe'); f.src = u + (u.indexOf('?') < 0 ? '?' : '&') + 'quiet=1'; f.title = S.ownMail.frame; f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
@@ -611,20 +638,20 @@ var DILApp = (function () {
     var ids = Object.keys(om.items); if (!ids.length) return omStop();
     if (Date.now() - om.started > 30 * 60000) return omStop(true);   // still waiting after half an hour: asked again next time
     api().mailState(ids).then(function (r) {
-      var own = [], bad = 0, waiting = false, sending = false, again = false, M = S.ownMail;
+      var own = [], bad = 0, waiting = false, sending = false, again = false, M = S.ownMail, ownKind = omKind(ids.filter(function (id) { return r.states[id] === 'own'; }));
       ids.forEach(function (id) {
         var s = r.states[id], it = om.items[id]; if (!it) return;
         if (s === 'waiting') { waiting = true; if (it.s === 'sending') again = true; } else if (s === 'sending') { sending = true; st.me.ownSend = true; }
-        else { delete om.items[id]; if (s === 'own') { own.push(it.first); st.me.ownSend = true; } else if (s === 'failed') bad++; }
+        else { delete om.items[id]; if (s === 'own') { own.push(it.first); st.me.ownSend = true; } if (s === 'failed') { bad++; omMark(id, 'failed', it.kind, it.first); } else omMark(id, 'done', it.kind, it.first); }   // 'gone' (finished, or dropped by a decision) never leaves a card saying sending
         it.s = s;
       });
-      if (bad) toast(M.failed, true); else if (own.length) toast(M.sentOwn(own));
-      var left = Object.keys(om.items); if (!left.length) return omStop();
+      if (bad) { toast(M.failed, true); omLine('failed'); } else if (own.length) { toast(M.sent(ownKind)); omLine('done', ownKind); }
+      var left = Object.keys(om.items); if (!left.length) return omStop(false, true);
       if (om.shown) { omWords(); if (again) $('#ownmail-w').textContent = M.laterNote(left.length); }   // a send that never ran: they can try again
       // an email queued after the page last loaded: load it again once the earlier emails are out of its hands
       if (waiting && !sending && left.some(function (id) { return om.items[id].at > om.loadedAt; })) omFrame();
-      if (waiting && !om.shown && left.some(function (id) { return Date.now() - om.items[id].at > (st.me.ownSend ? 9000 : 4000); })) omPanel();
-      om.timer = setTimeout(omPoll, om.shown ? 3000 : 1500);
+      if (waiting && !om.shown && left.some(function (id) { return Date.now() - om.items[id].at > 30000; })) omPanel();
+      omRefresh(); om.timer = setTimeout(omPoll, om.shown ? 3000 : 1500);
     }).catch(function () { om.timer = setTimeout(omPoll, 4000); });
   }
   function omNames() { return Object.keys(om.items).map(function (id) { return om.items[id].first; }); }
@@ -638,6 +665,7 @@ var DILApp = (function () {
       '<button type="button" class="btn quiet" data-om="later">' + esc(M.later) + '</button></div>' +
       '<p class="muted small" id="ownmail-w" aria-live="polite">' + esc(M.laterNote(n)) + '</p></div>';
     document.body.appendChild(bg);   // outside #app: a page change must not take it away
+    omLine('needsOK'); Object.keys(om.items).forEach(function (id) { omMark(id, 'needsOK'); });
     omWords(); om.back = document.activeElement; $('[data-om=go]', bg).focus();
     bg.addEventListener('click', function (e) {
       var b = e.target.closest('[data-om]'); if (!b) return;
@@ -651,8 +679,8 @@ var DILApp = (function () {
   }
   function omLater() { var n = omNames().length; omStop(true); toast(S.ownMail.laterToast(n)); }
   // keep: the emails are still waiting, so a later email in this visit brings the box back with all of them
-  function omStop(keep) {
-    clearTimeout(om.timer); om.timer = 0; om.shown = false; if (!keep) om.items = {};
+  function omStop(keep, lineStays) {
+    clearTimeout(om.timer); om.timer = 0; om.shown = false; if (!keep) om.items = {}; if (!lineStays) omLine();
     var p = $('#ownmail'); if (p) { p.remove(); if (om.back && document.body.contains(om.back) && om.back.focus) om.back.focus(); } om.back = null;
     if (om.frame && om.frame.parentNode) om.frame.parentNode.removeChild(om.frame); om.frame = null;
   }

@@ -164,9 +164,9 @@ goes from the Principal to the member of staff.
   (the decision or claim itself is saved and shows in the app).
 * Google cannot ask for its OK inside the hidden frame, so a box in the middle of the screen asks: **Continue with
   Google** (the sign-in page in its own tab with `send=1`, which calls `ScriptApp.requireScopes` for send mail only) or
-  **Later** (the email keeps waiting). It comes 4 s after an email starts waiting for anyone whose send page has never
-  run (property `sendok:<email>`, set at their first `outbox`), 9 s for anyone else, and again every time they open
-  Days in Lieu while an email waits (whoami `mailWaiting`). Tab stays inside it; Escape is Later.
+  **Later** (the email keeps waiting). It comes 30 s after an email starts waiting (a background send normally takes 10–20 s, so the
+  4 s / 9 s it used until 30 Sep 2026 was a false alarm for nearly everyone; `sendok:<email>` is still set at their first
+  `outbox`), and again every time they open Days in Lieu while an email waits (whoami `mailWaiting`). Tab stays inside it; Escape is Later.
 * A send that failed is marked *failed* and both pages say so ("let them know yourself"); a send that never ran is
   handed straight back (`back`) to be tried again; a hand-over the page never reports waits again after 5 minutes (a
   lost report can mean an email goes twice, never that it goes nowhere). Finished entries are cleared after a day.

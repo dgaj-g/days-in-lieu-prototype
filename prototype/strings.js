@@ -158,7 +158,7 @@ var S = (function () {
       needReason: 'Say what you did first.',
       needDate: 'Pick the day, or days, the work was on first.',
       sentTitle: 'Claim sent',
-      sentBody: function (who) { return cap(who) + ' has been emailed. Once the claim is approved you can book the days.'; },
+      sentBody: function (who) { return 'Once the claim is approved you can book the days.'; },
       backToDays: 'Back to my days',
       leaveConfirm: 'Leave without sending? What you typed will be lost.'
     },
@@ -207,7 +207,7 @@ var S = (function () {
       sending: 'Sending…',
       needDays: 'Pick at least one day first.',
       sentTitle: 'Booking sent',
-      sentBody: function (who) { return cap(who) + ' has been emailed. You’ll get an email as soon as there’s a decision.'; },
+      sentBody: function (who) { return 'You’ll get an email as soon as there’s a decision.'; },
       backToDays: 'Back to my days',
       leaveConfirm: 'Leave without sending? Your picks will be lost.',
       insteadDrop: 'Don’t link to the old booking',
@@ -364,9 +364,14 @@ var S = (function () {
     },
     // ---------- every email goes from the own address of the person it is from; nothing is ever sent in their place ----------
     ownMail: {
-      queued: function (first) { return 'Done — your email to ' + first + ' goes from your own address.'; },
-      sentOwn: function (names) { return names.length === 1 ? 'Email to ' + names[0] + ' sent from your own address.' : names.length + ' emails sent from your own address.'; },
+      // kind: 'claim' | 'request' | 'decision' | 'other'. The words on the card (done: true) and on the line under the header
+      // (done: false) while the email goes from the person's own address, then when it has gone. His words, 30 Sep 2026.
+      what: { claim: 'your claim', request: 'your request', decision: 'your decision' },
+      sending: function (kind, done) { var w = S.ownMail.what[kind]; return (done ? 'Done, sending' : 'Sending') + (w ? ' ' + w : '') + '…'; },
+      sent: function (kind) { return { claim: 'Claim sent', request: 'Request sent', decision: 'Decision sent' }[kind] || 'Sent'; },
+      needsOK: 'Needs your OK',
       failed: 'An email didn’t send. What you did is saved, so let them know yourself.',
+      failedLine: function (first) { return 'Email didn’t send. Let ' + first + ' know yourself.'; },
       frame: 'Send from your own email',
       title: function (names) { return names.length === 1 ? 'Your email to ' + names[0] + ' is waiting' : names.length + ' emails are waiting to go'; },
       body: function (n) { return 'Days in Lieu sends ' + (n === 1 ? 'it' : 'them') + ' from your own school email address. Google needs your OK for that, once only.'; },

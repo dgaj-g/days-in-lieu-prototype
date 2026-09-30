@@ -167,6 +167,19 @@ select{width:auto;padding-right:32px}
 .inline-msg{margin-top:10px;font-size:14px}
 .inline-msg.bad{color:var(--no)} .inline-msg.good{color:var(--ok)}
 .done-line{display:flex;align-items:center;gap:10px;padding:16px 22px;color:var(--ok);font-weight:600;background:var(--ok-soft);border-radius:var(--radius)}
+.done-line.sending{color:var(--navy-800);background:var(--gold-soft)}
+.done-line.bad{color:var(--no);background:var(--no-soft)}
+.done-line.wait{color:var(--wait);background:var(--wait-soft)}
+/* the line under the header while an email goes from the person's own address, then when it has gone (30 Sep 2026) */
+.mailline{display:none;align-items:center;justify-content:center;gap:10px;padding:9px 16px;font-size:14px;font-weight:600;color:var(--navy-800);background:var(--gold-soft);border-bottom:1px solid var(--gold-line)}
+.mailline.on{display:flex}
+.mailline.done{color:var(--ok);background:var(--ok-soft);border-color:transparent}
+.mailline.failed{color:var(--no);background:var(--no-soft);border-color:transparent}
+.mailline.needsOK{color:var(--wait);background:var(--wait-soft)}
+.dots{display:inline-flex;gap:4px;align-items:center}
+.dots i{width:6px;height:6px;border-radius:50%;background:currentColor;animation:hop 1.2s ease-in-out infinite}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes hop{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-4px);opacity:1}}
 
 /* ---------- new request layout ---------- */
 .two{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:start}
