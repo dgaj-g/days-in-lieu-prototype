@@ -600,6 +600,9 @@ var DILApp = (function () {
      seconds (Google starts the page afresh each time), so the box waits thirty seconds: at four it was a false alarm for
      nearly everyone (30 Sep 2026). */
   var om = { items: {}, frame: null, loadedAt: 0, started: 0, timer: 0, shown: false, back: null, lineTimer: 0 };
+  // While an email is going from their own address, closing the tab stops it: the browser asks first, in its own words
+  // (computers; most phones never ask). Not while the box is up: closing then is the same as Later (12 Oct 2026).
+  window.addEventListener('beforeunload', function (e) { if (om.timer && !om.shown && Object.keys(om.items).length) { e.preventDefault(); e.returnValue = ''; } });
   // kind: 'claim' | 'request' | 'decision' | 'other' — picks the words ("Sending your claim…", "Claim sent").
   function ownMail(id, first, kind) {
     if (!id || !st.me.sendUrl) return;
@@ -610,8 +613,10 @@ var DILApp = (function () {
   // What the person sees while the email goes and once it has gone: the card's own line (data-mail, on the page that sent
   // it) and one line under the header, on every page, so a withdrawal or a cancellation shows it too.
   function dots() { return '<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>'; }
+  // "Sending your claim…" with "Keep this open until it says “Claim sent”." under it: the page closing stops the email
+  function sendingWords(kind, done) { return '<span>' + esc(S.ownMail.sending(kind, done)) + '<span class="keep">' + esc(S.ownMail.keep(kind)) + '</span></span>'; }
   function doneLine(mailId, kind, plain) {
-    return mailId ? '<div class="done-line sending" data-mail="' + esc(mailId) + '">' + dots() + esc(S.ownMail.sending(kind, true)) + '</div>' : '<div class="done-line">✓ ' + esc(plain) + '</div>';
+    return mailId ? '<div class="done-line sending" data-mail="' + esc(mailId) + '">' + dots() + sendingWords(kind, true) + '</div>' : '<div class="done-line">✓ ' + esc(plain) + '</div>';
   }
   function omKind(ids) { var ks = []; (ids || Object.keys(om.items)).forEach(function (id) { var k = om.items[id] && om.items[id].kind; if (k && ks.indexOf(k) < 0) ks.push(k); }); return ks.length === 1 ? ks[0] : 'other'; }
   function omMark(id, state, kind, first) {
@@ -624,7 +629,7 @@ var DILApp = (function () {
     var el = $('#mailline'), M = S.ownMail; if (!el) return; clearTimeout(om.lineTimer); om.lineTimer = 0;
     if (!state || $('.done-line[data-mail]')) { el.className = 'mailline'; el.innerHTML = ''; return; }   // the page has its own line: no second one
     el.className = 'mailline on ' + state;
-    el.innerHTML = state === 'sending' ? dots() + esc(M.sending(kind, false)) : state === 'done' ? '✓ ' + esc(M.sent(kind)) : state === 'failed' ? '! ' + esc(M.failed) : esc(M.needsOK);
+    el.innerHTML = state === 'sending' ? dots() + sendingWords(kind, false) : state === 'done' ? '✓ ' + esc(M.sent(kind)) : state === 'failed' ? '! ' + esc(M.failed) : esc(M.needsOK);
     if (state === 'done' || state === 'failed') om.lineTimer = setTimeout(function () {   // then back to whatever is still going, or gone
       if (!Object.keys(om.items).length) omLine(); else omLine(om.shown ? 'needsOK' : 'sending', omKind());
     }, state === 'done' ? 4000 : 8000);

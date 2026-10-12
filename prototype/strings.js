@@ -370,6 +370,7 @@ var S = (function () {
       sending: function (kind, done) { var w = S.ownMail.what[kind]; return (done ? 'Done, sending' : 'Sending') + (w ? ' ' + w : '') + '…'; },
       sent: function (kind) { return { claim: 'Claim sent', request: 'Request sent', decision: 'Decision sent' }[kind] || 'Sent'; },
       needsOK: 'Needs your OK',
+      keep: function (kind) { return 'Keep this open until it says “' + S.ownMail.sent(kind) + '”.'; },   // under the sending words: closing stops the email (12 Oct 2026)
       failed: 'An email didn’t send. What you did is saved, so let them know yourself.',
       failedLine: function (first) { return 'Email didn’t send. Let ' + first + ' know yourself.'; },
       frame: 'Send from your own email',
